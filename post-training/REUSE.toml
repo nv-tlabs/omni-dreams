@@ -1,0 +1,173 @@
+# REUSE.toml for post-training/
+# See: https://reuse.software/spec-3.3/#reusetoml
+#
+# The repo-root REUSE.toml supplies the Apache-2.0 fall-through for any file
+# without an in-file SPDX header. Entries below are precise overrides for
+# derived/vendored files where the in-file SPDX header alone does not
+# capture the full license picture (upstream copyright, dual-license
+# expression).
+#
+# Paths are relative to this file (i.e. relative to post-training/).
+# precedence = "aggregate" stacks TOML-declared SPDX-FileCopyrightText
+# entries with in-file headers; precedence = "override" replaces.
+#
+# See also: post-training/THIRD_PARTY_NOTICES.md for the canonical
+# component list with upstream URLs and use sites.
+
+version = 1
+
+# ---------------------------------------------------------------------------
+# Empty package-init files — REUSE coverage via fall-through. The repo-wide
+# top-level annotation already covers them as Apache-2.0; this entry exists
+# for clarity so `reuse lint` doesn't flag bare __init__.py files.
+# ---------------------------------------------------------------------------
+
+[[annotations]]
+path = "**/__init__.py"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
+SPDX-License-Identifier = "Apache-2.0"
+
+# ---------------------------------------------------------------------------
+# Self-Forcing (Apache-2.0) — vendored under third_party/self_forcing/
+# ---------------------------------------------------------------------------
+
+[[annotations]]
+path = "omnidreams/_src/omnidreams/third_party/self_forcing/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright the Self-Forcing authors (Guande He et al., NeurIPS 2025)."
+SPDX-License-Identifier = "Apache-2.0"
+
+# ---------------------------------------------------------------------------
+# fvcore (Apache-2.0) — registry / lazy-instantiation pattern derived in
+# imaginaire/lazy_config/. Facebook copyright preserved for the
+# fvcore-derived parts; NVIDIA modifications under Apache-2.0.
+# ---------------------------------------------------------------------------
+
+[[annotations]]
+path = "omnidreams/_src/imaginaire/lazy_config/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright (c) Facebook, Inc. and its affiliates."
+SPDX-License-Identifier = "Apache-2.0"
+
+# ---------------------------------------------------------------------------
+# OpenAI CLIP + mlfoundations open_clip (MIT) — modified in
+# predict2/networks/clip.py. NVIDIA modifications relicensed under
+# Apache-2.0 per MIT permission; upstream notice preserved.
+# ---------------------------------------------------------------------------
+
+[[annotations]]
+path = "omnidreams/_src/predict2/networks/clip.py"
+precedence = "override"
+SPDX-FileCopyrightText = [
+  "Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.",
+  "Copyright (c) 2021 OpenAI.",
+  "Copyright (c) 2012-2021 Gabriel Ilharco, Mitchell Wortsman, Nicholas Carlini, Rohan Taori, Achal Dave, Vaishaal Shankar, John Miller, Hongseok Namkoong, Hannaneh Hajishirzi, Ali Farhadi, Ludwig Schmidt.",
+  "Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved."
+]
+SPDX-License-Identifier = "Apache-2.0 AND MIT"
+
+# ---------------------------------------------------------------------------
+# HuggingFace transformers (Apache-2.0) — predict2/networks/xlm_roberta.py
+# ---------------------------------------------------------------------------
+
+[[annotations]]
+path = "omnidreams/_src/predict2/networks/xlm_roberta.py"
+precedence = "aggregate"
+SPDX-FileCopyrightText = [
+  "Copyright 2019 Facebook AI Research and the HuggingFace Inc. team.",
+  "Copyright (c) 2018, NVIDIA CORPORATION.",
+  "Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved."
+]
+SPDX-License-Identifier = "Apache-2.0"
+
+# ---------------------------------------------------------------------------
+# HuggingFace diffusers (Apache-2.0) — predict2/models/fm_solvers_unipc.py
+# (UniPC scheduler converted for flow matching).
+# ---------------------------------------------------------------------------
+
+[[annotations]]
+path = "omnidreams/_src/predict2/models/fm_solvers_unipc.py"
+precedence = "aggregate"
+SPDX-FileCopyrightText = [
+  "Copyright 2024 TSAIL Team and The HuggingFace Team. All rights reserved.",
+  "Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved."
+]
+SPDX-License-Identifier = "Apache-2.0"
+
+# ---------------------------------------------------------------------------
+# Intel Open Image Denoise / OIDN (Apache-2.0) — color-conversion utilities
+# in imaginaire/utils/tone_curve.py.
+# ---------------------------------------------------------------------------
+
+[[annotations]]
+path = "omnidreams/_src/imaginaire/utils/tone_curve.py"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright (c) 2018-Present Intel Corporation."
+SPDX-License-Identifier = "Apache-2.0"
+
+# ---------------------------------------------------------------------------
+# nanoGPT (MIT) — WarmupCosineLR adapted in imaginaire/utils/scheduler.py.
+# ---------------------------------------------------------------------------
+
+[[annotations]]
+path = "omnidreams/_src/imaginaire/utils/scheduler.py"
+precedence = "override"
+SPDX-FileCopyrightText = [
+  "Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.",
+  "Copyright (c) 2022 Andrej Karpathy."
+]
+SPDX-License-Identifier = "Apache-2.0 AND MIT"
+
+# ---------------------------------------------------------------------------
+# torchtitan (BSD-3-Clause) — clip_grad_norm_ adapted in
+# omnidreams/utils/torch_future.py.
+# ---------------------------------------------------------------------------
+
+[[annotations]]
+path = "omnidreams/_src/omnidreams/utils/torch_future.py"
+precedence = "override"
+SPDX-FileCopyrightText = [
+  "Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.",
+  "Copyright (c) Meta Platforms, Inc. and affiliates."
+]
+SPDX-License-Identifier = "Apache-2.0 AND BSD-3-Clause"
+
+# ---------------------------------------------------------------------------
+# IRASim (Apache-2.0) — action-conditioned video dataset utilities under
+# predict2/action/datasets/.
+# ---------------------------------------------------------------------------
+
+[[annotations]]
+path = "omnidreams/_src/predict2/action/datasets/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright (c) ByteDance, Inc. and its affiliates."
+SPDX-License-Identifier = "Apache-2.0"
+
+# ---------------------------------------------------------------------------
+# diffusion_policy (MIT) — RotationTransform adapted in
+# predict2/action/datasets/gr00t_dreams/data/transform/state_action.py.
+# This override stacks under the IRASim entry above.
+# ---------------------------------------------------------------------------
+
+[[annotations]]
+path = "omnidreams/_src/predict2/action/datasets/gr00t_dreams/data/transform/state_action.py"
+precedence = "override"
+SPDX-FileCopyrightText = [
+  "Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.",
+  "Copyright (c) ByteDance, Inc. and its affiliates.",
+  "Copyright (c) 2023 Columbia Artificial Intelligence and Robotics Lab."
+]
+SPDX-License-Identifier = "Apache-2.0 AND MIT"
+
+# ---------------------------------------------------------------------------
+# RetinaFace (MIT) — consumed at runtime only by
+# imaginaire/auxiliary/guardrail/face_blur_filter/. No source vendored;
+# entry exists for completeness so the dependency is documented.
+# ---------------------------------------------------------------------------
+
+[[annotations]]
+path = "omnidreams/_src/imaginaire/auxiliary/guardrail/face_blur_filter/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
+SPDX-License-Identifier = "Apache-2.0"

@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+name: thrustmaster
+display_name: "Thrustmaster T300RS Racing Wheel"
+is_default: true
+
+detection_patterns:
+  - "Thrustmaster T300RS Racing wheel"
+  - "T300RS Racing wheel"
+  - "Thrustmaster"
+  - "Racing Wheel"
+
+axis_map:
+  steering: 0x00   # ABS_X
+  throttle: 0x02   # ABS_Z
+  brake: 0x05      # ABS_RZ
+
+pedal:
+  inverted: true   # released=max, pressed=min
+
+invert_steering: true
+
+ffb:
+  enabled: true
+  gain: 0.6
+
+threshold: 0.12

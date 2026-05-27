@@ -1,0 +1,32 @@
+[project]
+name = "cosmos-vqa-tools"
+version = "0.1.0"
+description = "VQA evaluation tools for Cosmos models"
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+    "vllm>=0.9.2",
+    "qwen-vl-utils>=0.0.8",
+    "openai>=1.0.0",
+    # Security floors matching the workspace vulnerability remediation.
+    "protobuf>=7.35.0,<8",
+    "torch>=2.11",
+    "transformers>=5.0,<6",
+    "urllib3>=2.7.0",
+]
+
+[tool.uv]
+managed = true
+# This is a script-only project, no package to install
+package = false
+# vLLM is a Linux/GPU tool here; avoid universal-lock splits for platforms the
+# helper is not intended to support.
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+override-dependencies = [
+    # Security floors matching the direct requirements above. vLLM and
+    # opentelemetry metadata may lag the patched protobuf line.
+    "protobuf>=7.35.0,<8",
+    "torch>=2.11",
+    "transformers>=5.0,<6",
+    "urllib3>=2.7.0",
+]

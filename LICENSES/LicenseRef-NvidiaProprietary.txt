@@ -1,0 +1,22 @@
+NVIDIA Proprietary
+==================
+
+The portions of this repository marked with the SPDX identifier
+``LicenseRef-NvidiaProprietary`` are NVIDIA-internal materials (e.g.
+internal CI configuration, gitlab→github sync helpers) that are not part
+of the open-source release of this project. They are subject to the
+following terms and conditions:
+
+  Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+  NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+  property and proprietary rights in and to this material, related
+  documentation and any modifications thereto. Any use, reproduction,
+  disclosure or distribution of this material and related documentation
+  without an express license agreement from NVIDIA CORPORATION or its
+  affiliates is strictly prohibited.
+
+These files are kept in this repository only for the convenience of the
+NVIDIA-internal source repository; they are excluded from the public
+GitHub mirror by ``internal/sync_to_github.sh`` (which excludes both
+``internal/`` and ``.gitlab-ci.yml`` from the rsync to the GitHub clone).

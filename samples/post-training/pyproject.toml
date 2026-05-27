@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "post-training-sample"
+version = "0.1.0"
+description = "Post-training fine-tune sample for Cosmos2 SV-HDMap; composes against the ../../post-training/ release tree."
+readme = "README.md"
+requires-python = ">=3.10"
+# The cu128 / cu130 extras forward to the release tree's matching extras.
+# Pick one based on your driver: cu128 for driver ≥570 (CUDA 12.8); cu130
+# for driver ≥580 (CUDA 13.0, Blackwell).
+dependencies = [
+  "omni-dreams-post-training",
+  "huggingface_hub>=0.24",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+cu128 = ["omni-dreams-post-training[cu128]"]
+cu130 = ["omni-dreams-post-training[cu130]"]
+dev = [
+  "pytest>=9.0.3",
+  "ruff",
+  "pyright",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/post_training"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/post_training",
+  "configs",
+  "tests",
+  "README.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+strict_markers = true
+markers = [
+  "gpu: test requires an NVIDIA GPU / CUDA driver (select with '-m gpu', skip with '-m \"not gpu\"')",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+
+[tool.pyright]
+pythonVersion = "3.10"
+typeCheckingMode = "standard"
+include = ["src", "configs", "tests"]
+# Vendored upstream tree is intentionally excluded; we never lint or type-check
+# the read-only mirror.
+exclude = ["../../post-training"]
+
+[tool.uv]
+managed = true
+# Linux x86_64 only — matches the NVIDIA PyTorch container target. Narrows
+# the universal-lockfile fork space so uv doesn't try to satisfy markers
+# (e.g. aarch64) that have separate cosmos-dependencies index entries.
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+
+[tool.uv.sources]
+omni-dreams-post-training = { path = "../../post-training", editable = true }

@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+*.pyo
+*.log
+
+.pytest_cache/
+.ruff_cache/
+.cache/
+
+.venv/
+.venv*/
+
+# HF downloads (populated by prepare.py) and run outputs are sample-local.
+data/
+outputs/
+
+# Slurm artifacts. Land in the cwd at sbatch time (typically the repo root or
+# this dir); ignore everywhere they may show up.
+smoke_*.out
+smoke_*.err
+diag_*.out
+diag_*.err

@@ -1,0 +1,5 @@
+url:    https://gitlab-master.nvidia.com/dir/imaginaire4.git
+branch: dev/jmccaffrey/pt-exper-tests
+commit: 189ad1ab96e3a930e2d47737ccca7fc43180e4c9
+mode:   reproducible
+date:   2026-05-07T23:08:04Z
