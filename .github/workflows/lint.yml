@@ -7,7 +7,7 @@ name: Lint
 # public repo, self-hosted PR execution should move to its trusted branch flow.
 on:
   push:
-    branches: ["**"]
+    branches: [main, master]
   pull_request:
   workflow_dispatch:
 

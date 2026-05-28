@@ -7,7 +7,7 @@ name: Post-Training
 # public repo, self-hosted PR execution should move to its trusted branch flow.
 on:
   push:
-    branches: ["**"]
+    branches: [main, master]
     paths:
       - "samples/post-training/**"
       - "post-training/**"
