@@ -26,6 +26,10 @@ concurrency:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   script-tests:
     name: post-training-script-tests

@@ -18,6 +18,10 @@ concurrency:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   python:
     name: lint-python
@@ -63,4 +67,29 @@ jobs:
           python3 -m pip install "reuse==6.2.0"
 
       - name: Run REUSE lint
-        run: reuse lint
+        run: |
+          set -euo pipefail
+
+          output="$(mktemp)"
+          if reuse lint >"${output}" 2>&1; then
+            cat "${output}"
+            exit 0
+          fi
+
+          cat "${output}"
+
+          # The public GitHub mirror excludes internal/ and .gitlab-ci.yml, so
+          # the proprietary license text can be unused here while still being
+          # used by the internal GitLab source tree.
+          if grep -Fxq "* Unused licenses: LicenseRef-NvidiaProprietary" "${output}" &&
+             grep -Fxq "* Bad licenses: 0" "${output}" &&
+             grep -Fxq "* Deprecated licenses: 0" "${output}" &&
+             grep -Fxq "* Licenses without file extension: 0" "${output}" &&
+             grep -Fxq "* Missing licenses: 0" "${output}" &&
+             grep -Fxq "* Read errors: 0" "${output}" &&
+             grep -Fxq "* Invalid SPDX License Expressions: 0" "${output}"; then
+            echo "Allowing unused LicenseRef-NvidiaProprietary in the public mirror."
+            exit 0
+          fi
+
+          exit 1
