@@ -1,0 +1,95 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+name: Lint
+
+# Ordinary private-repo triggers for now. When copy-pr-bot is enabled for the
+# public repo, self-hosted PR execution should move to its trusted branch flow.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  python:
+    name: lint-python
+    runs-on: [self-hosted, omni-dreams]
+    container:
+      image: python:3.12-slim
+    steps:
+      - name: Show Python version
+        run: python3 --version
+
+      - name: Install ruff
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          python3 -m pip install ruff
+
+      - name: Repo-level Python lint placeholder
+        run: echo "No additional files to lint at repo level"
+
+  reuse:
+    name: lint-reuse
+    runs-on: [self-hosted, omni-dreams]
+    container:
+      image: python:3.12-slim
+    steps:
+      - name: Install git for checkout
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mark checkout as safe for git
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Install REUSE
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          python3 -m pip install "reuse==6.2.0"
+
+      - name: Run REUSE lint
+        run: |
+          set -euo pipefail
+
+          output="$(mktemp)"
+          if reuse lint >"${output}" 2>&1; then
+            cat "${output}"
+            exit 0
+          fi
+
+          cat "${output}"
+
+          # The public GitHub mirror excludes internal/ and .gitlab-ci.yml, so
+          # the proprietary license text can be unused here while still being
+          # used by the internal GitLab source tree.
+          if grep -Fxq "* Unused licenses: LicenseRef-NvidiaProprietary" "${output}" &&
+             grep -Fxq "* Bad licenses: 0" "${output}" &&
+             grep -Fxq "* Deprecated licenses: 0" "${output}" &&
+             grep -Fxq "* Licenses without file extension: 0" "${output}" &&
+             grep -Fxq "* Missing licenses: 0" "${output}" &&
+             grep -Fxq "* Read errors: 0" "${output}" &&
+             grep -Fxq "* Invalid SPDX License Expressions: 0" "${output}"; then
+            echo "Allowing unused LicenseRef-NvidiaProprietary in the public mirror."
+            exit 0
+          fi
+
+          exit 1
