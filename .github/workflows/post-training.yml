@@ -1,0 +1,208 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+name: Post-Training
+
+# Ordinary private-repo triggers for now. When copy-pr-bot is enabled for the
+# public repo, self-hosted PR execution should move to its trusted branch flow.
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "samples/post-training/**"
+      - "post-training/**"
+      - ".github/workflows/post-training.yml"
+  pull_request:
+    paths:
+      - "samples/post-training/**"
+      - "post-training/**"
+      - ".github/workflows/post-training.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  script-tests:
+    name: post-training-script-tests
+    runs-on: [self-hosted, omni-dreams]
+    container:
+      image: python:3.10-slim
+    steps:
+      - name: Install git for checkout
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mark checkout as safe for git
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Install test dependencies
+        run: |
+          set -euo pipefail
+          python --version
+          python -m pip install --upgrade pip
+          python -m pip install "pytest>=9.0.3,<10"
+
+      - name: Run script tests
+        run: |
+          set -euo pipefail
+          python -m pytest \
+            samples/post-training/tests/test_setup_env.py \
+            samples/post-training/tests/test_prepare.py \
+            samples/post-training/tests/test_torchrun_smoke.py \
+            samples/post-training/tests/test_smoke_test_slurm.py \
+            samples/post-training/tests/test_triton_per_rank_wrap.py \
+            samples/post-training/tests/test_checkpoint_setup_consistency.py
+
+  uv-sync:
+    name: post-training-uv-sync
+    runs-on: [self-hosted, omni-dreams]
+    container:
+      image: python:3.10-slim
+    env:
+      UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
+    steps:
+      - name: Install git for checkout
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mark checkout as safe for git
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Install uv
+        run: |
+          set -euo pipefail
+          python --version
+          python -m pip install --upgrade pip
+          python -m pip install "uv==0.10.2"
+
+      - name: Check post-training lockfile
+        working-directory: post-training
+        run: |
+          set -euo pipefail
+          uv --version
+          uv lock --check --offline
+          uv sync --extra=cu128 --locked --dry-run --offline
+
+  full-setup:
+    name: post-training-full-setup
+    runs-on: [self-hosted, omni-dreams]
+    container:
+      image: python:3.10-slim
+    timeout-minutes: 240
+    env:
+      CUDA_EXTRA: cu128
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - name: Install git for checkout
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mark checkout as safe for git
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Install uv
+        run: |
+          set -euo pipefail
+          python --version
+          python -m pip install --upgrade pip
+          python -m pip install "uv==0.10.2"
+
+      - name: Run full setup smoke
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${HF_TOKEN:-}" ]]; then
+            echo "ERROR: HF_TOKEN GitHub Actions secret is required for post-training full setup." >&2
+            exit 1
+          fi
+
+          export OMNI_CACHE_DIR="${GITHUB_WORKSPACE}/.cache/omni-dreams"
+          export UV_CACHE_DIR="${GITHUB_WORKSPACE}/.cache/uv"
+          export UV_TOOL_DIR="${OMNI_CACHE_DIR}/uv-tools"
+          export UV_PYTHON_INSTALL_DIR="${OMNI_CACHE_DIR}/uv-python"
+          export PIP_CACHE_DIR="${OMNI_CACHE_DIR}/pip"
+          export TMPDIR="/tmp/omni-dreams-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          export OMNI_MIN_SETUP_FREE_GB=0
+          export OMNI_MIN_WORKTREE_FREE_GB=0
+
+          mkdir -p "${OMNI_CACHE_DIR}/huggingface" "${UV_CACHE_DIR}" "${TMPDIR}"
+          printf '%s' "${HF_TOKEN}" > "${OMNI_CACHE_DIR}/huggingface/token"
+          chmod 600 "${OMNI_CACHE_DIR}/huggingface/token"
+
+          echo "Using CUDA extra: ${CUDA_EXTRA}"
+          echo "Using cache dir:   ${OMNI_CACHE_DIR}"
+          echo "Using tmp dir:     ${TMPDIR}"
+          uv --version
+
+          cd post-training
+          uv lock --check --offline
+          uv sync --extra "${CUDA_EXTRA}" --locked
+          cd "${GITHUB_WORKSPACE}"
+
+          bash samples/post-training/setup_env.sh --cache-dir "${OMNI_CACHE_DIR}"
+          source samples/post-training/_env.sh
+
+          test -x post-training/.venv/bin/python
+          test -d post-training/data/video
+          test -d post-training/data/hdmap
+          test -d post-training/data/caption
+          test -f "${OMNI_CACHE_DIR}/huggingface/token"
+
+          require_any_path() {
+            local label="$1"
+            local root="$2"
+            local pattern="$3"
+
+            if ! find "${root}" -path "${pattern}" -print -quit | grep -q .; then
+              echo "ERROR: Missing expected ${label} under ${root} matching ${pattern}" >&2
+              exit 1
+            fi
+          }
+
+          require_any_path \
+            "single-view distilled checkpoint" \
+            "${HF_HOME}/hub/models--nvidia--omni-dreams-models/snapshots" \
+            "*/single_view/distilled/*_model.pt"
+          require_any_path \
+            "Cosmos Predict2 tokenizer" \
+            "${HF_HOME}/hub/models--nvidia--Cosmos-Predict2-2B-Video2World/snapshots" \
+            "*/tokenizer/tokenizer.pth"
+          require_any_path \
+            "staged scene video symlink" \
+            "${GITHUB_WORKSPACE}/post-training/data/video" \
+            "*.mp4"
+
+          echo "Post-training full setup completed."
+          du -sh "${OMNI_CACHE_DIR}" post-training/.venv post-training/data || true
+
+      - name: Clean full setup outputs
+        if: always()
+        run: |
+          rm -rf \
+            "${GITHUB_WORKSPACE}/.cache" \
+            "${GITHUB_WORKSPACE}/post-training/.venv" \
+            "${GITHUB_WORKSPACE}/post-training/data" \
+            "/tmp/omni-dreams-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
