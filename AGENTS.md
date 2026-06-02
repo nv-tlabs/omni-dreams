@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file orients AI coding agents (Claude Code, Codex, Cursor) working on NVIDIA Omniverse Dreams, a multi-camera photorealistic world model for autonomous-driving simulation.
+This file orients AI coding agents (Claude Code, Codex, Cursor) working on NVIDIA OmniDreams, a multi-camera photorealistic world model for autonomous-driving simulation.
 
 ## Directory-level skills
 
@@ -15,8 +15,7 @@ Each `SKILL.md` is the agent-runnable recipe for the directory it sits in.
 Use the workflow entry point that matches the task:
 
 - **Post-training / fine-tuning:** stay in this repo. Start with [`samples/post-training/README.md`](samples/post-training/README.md), then follow [`samples/post-training/QUICKSTART.md`](samples/post-training/QUICKSTART.md) or the agent-runnable [`samples/post-training/SKILL.md`](samples/post-training/SKILL.md). Do not clone FlashDreams for post-training.
-- **Live interactive demo:** use [`samples/interactive-drive`](samples/interactive-drive/README.md). Its `world-model` extra pulls FlashDreams through `uv sync` when that integration is needed.
-- **Offline batch inference:** start in FlashDreams instead of this repo. Use this repo when you need the live `interactive-drive` demo or post-training launchers.
+- **Live interactive demo and offline batch inference:** start in FlashDreams. The interactive driving sample and runtime inference entry points live there.
 
 Post-training source distributions are supported without git metadata as long
 as they preserve the expected relative layout: `samples/post-training/` and
@@ -29,7 +28,6 @@ Start at the repo root and follow links into each sample; the READMEs are the so
 - [`README.md`](README.md) — project overview, repo-wide quickstarts, license/notice/contribution links
   - [`CONTRIBUTING.md`](CONTRIBUTING.md) — DCO sign-off and PR conventions
   - Licensed Apache 2.0; see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE) for attribution.
-- [`samples/interactive-drive/README.md`](samples/interactive-drive/README.md) — interactive driving demo (Vulkan window or MJPEG stream)
 - [`samples/post-training/README.md`](samples/post-training/README.md) — fine-tune sample orientation map
   - [`samples/post-training/QUICKSTART.md`](samples/post-training/QUICKSTART.md) — four-step zero-to-training recipe
   - [`samples/post-training/SKILL.md`](samples/post-training/SKILL.md) — agent-runnable E1/E2/E3 procedure

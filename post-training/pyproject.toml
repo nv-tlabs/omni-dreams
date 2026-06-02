@@ -23,7 +23,7 @@ dynamic = ["version"]
 authors = [
   {name = "NVIDIA Corporation"},
 ]
-description = "Omniverse Dreams Post-Training Package"
+description = "NVIDIA OmniDreams Post-Training Package"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 classifiers = [

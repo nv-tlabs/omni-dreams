@@ -16,15 +16,45 @@
 
 """Stage post-training inputs into ``samples/post-training/data/``.
 
-Downloads the HuggingFace sample dataset and fans its per-scene file
-layout out into the per-camera tree that
-``LocalMultiviewVideoDataset`` expects.
+Downloads the HuggingFace sample dataset (or fans out an already-staged
+local copy) and maps its per-scene file layout into the per-camera tree
+that ``LocalMultiviewVideoDataset`` expects.
 
-Source layout on HF (one directory per scene UUID)::
+The sample dataset is the PAI-NuRec release,
+``nvidia/PhysicalAI-Autonomous-Vehicles-NuRec`` — a *separate* HF repo
+from the ``omni-dreams-models`` checkpoint repo. Override it with
+``OMNI_HF_DATA_REPO`` (full ``org/repo`` id), independent of the
+``OMNI_DREAMS_HF_ORG`` knob that selects the checkpoint org.
 
-    <subpath>/<uuid>/<uuid>.<camera_key>_rgb.mp4
-    <subpath>/<uuid>/<uuid>.<camera_key>_hdmap.mp4
-    <subpath>/<uuid>/<uuid>.prompt.txt
+The trainable scenes live on the ``26.01`` **branch** under
+``sample_set/26.01_release/`` (the branch and folder names differ — both
+are pinned here in ``DEFAULT_REVISION`` / ``DEFAULT_SUBPATH``, override with
+``OMNI_HF_DATA_REVISION`` / ``OMNI_HF_DATA_SUBPATH``).
+
+Source layout (one directory per scene UUID)::
+
+    <subpath>/<uuid>/<camera_key>_rgb.mp4       # PAI-NuRec: no UUID prefix
+    <subpath>/<uuid>/<camera_key>_hdmap.mp4
+    <subpath>/<uuid>/<camera_key>_prompt.txt    # PAI-NuRec: per-camera caption
+    <subpath>/<uuid>/<uuid>.prompt.txt          # legacy: one caption per scene
+    <subpath>/<uuid>/<uuid>.usdz                # multi-TB recon; never trained on
+
+The legacy ``omni-dreams-scenes`` layout prefixed every file with
+``<uuid>.`` (e.g. ``<uuid>.<camera_key>_rgb.mp4``); that prefix is stripped
+when present, so both conventions fan out correctly. Two caption flavours
+are accepted: a per-camera ``_prompt.txt`` wins, falling back to a
+scene-level ``.prompt.txt`` when present.
+
+**There is no manifest marking the trainable subset** — a scene is
+trainable iff its directory ships the per-camera training media. We select
+it positively at download time: only ``*_rgb.mp4`` / ``*_hdmap.mp4`` /
+``*_prompt.txt`` (plus the legacy scene-level ``*.prompt.txt``) are
+fetched. That skips the ~740 reconstruction-only scenes, every per-scene
+``.usdz`` (~1.6 TB), and the bare ``camera_front_wide_120fov.mp4`` preview
+(~8.5 GiB) the dataloader never reads — ~10 GiB instead of ~1.65 TB.
+Override the selector with ``OMNI_HF_DATA_INCLUDE`` (e.g. a future run that
+differentiably renders the scenes wants the ``.usdz``: set
+``OMNI_HF_DATA_INCLUDE='**'``).
 
 Target layout under ``data_root`` (symlinks; cheap + reversible)::
 
@@ -37,10 +67,19 @@ not the downloaded payload. ``setup_env.sh`` invokes this script on
 every run.
 
 Env overrides:
-    OMNI_DREAMS_HF_ORG    HF org for OmniDreams repos
-                          (default: nvidia)
-    OMNI_HF_DATA_SUBPATH  subdir within the repo
-                          (default: PAI-900_intersect_PAI-300k)
+    OMNI_HF_DATA_REPO       HF dataset repo id
+                            (default: nvidia/PhysicalAI-Autonomous-Vehicles-NuRec)
+    OMNI_HF_DATA_REVISION   branch / tag / commit on that repo
+    OMNI_HF_DATA_SUBPATH    subdir within the repo
+                            (defaults: see DEFAULT_REVISION / DEFAULT_SUBPATH)
+    OMNI_LOCAL_DATA_SOURCE  fan out from this already-downloaded per-scene
+                            tree instead of hitting HuggingFace (e.g. an
+                            rclone'd S3 copy). Skips snapshot_download.
+    OMNI_HF_DATA_INCLUDE    space-separated globs to fetch (default: the
+                            per-camera training media; '**' = everything).
+    OMNI_HF_DATA_IGNORE     space-separated globs to skip on download
+                            (default: none — the include selector already
+                            excludes the .usdz).
 """
 
 from __future__ import annotations
@@ -51,9 +90,14 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 
-DEFAULT_HF_ORG = "nvidia"
-SCENES_REPO_NAME = "omni-dreams-scenes"
-DEFAULT_SUBPATH = "PAI-900_intersect_PAI-300k"
+# PAI-NuRec is a standalone public dataset repo, decoupled from the
+# omni-dreams-models checkpoint org (OMNI_DREAMS_HF_ORG). Override the whole
+# id with OMNI_HF_DATA_REPO.
+DEFAULT_DATA_REPO = "nvidia/PhysicalAI-Autonomous-Vehicles-NuRec"
+# The trainable scenes live on this branch; the in-repo folder is
+# named 26.01_release (note: branch != folder). Both are overridable.
+DEFAULT_REVISION = "26.01"
+DEFAULT_SUBPATH = "sample_set/26.01_release"
 
 
 def info(message: str) -> None:
@@ -65,11 +109,16 @@ def repo_root() -> Path:
 
 
 def default_repo() -> str:
-    return f"{os.environ.get('OMNI_DREAMS_HF_ORG', DEFAULT_HF_ORG)}/{SCENES_REPO_NAME}"
+    return os.environ.get("OMNI_HF_DATA_REPO", DEFAULT_DATA_REPO)
+
+
+def default_revision() -> str:
+    return os.environ.get("OMNI_HF_DATA_REVISION", DEFAULT_REVISION)
 
 
 def parse_args() -> argparse.Namespace:
     repo_default = default_repo()
+    revision_default = default_revision()
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--stage",
@@ -80,12 +129,57 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--repo",
         default=repo_default,
-        help=f"HF dataset repo id (default: {repo_default}; org env: OMNI_DREAMS_HF_ORG).",
+        help=f"HF dataset repo id (default: {repo_default}; env: OMNI_HF_DATA_REPO).",
+    )
+    parser.add_argument(
+        "--revision",
+        default=revision_default,
+        help=(
+            f"Branch / tag / commit on the dataset repo "
+            f"(default: {revision_default}; env: OMNI_HF_DATA_REVISION)."
+        ),
     )
     parser.add_argument(
         "--subpath",
         default=os.environ.get("OMNI_HF_DATA_SUBPATH", DEFAULT_SUBPATH),
-        help=f"Subdirectory within the repo (default: {DEFAULT_SUBPATH}; env: OMNI_HF_DATA_SUBPATH).",
+        help=(
+            f"Subdirectory within the repo "
+            f"(default: {DEFAULT_SUBPATH}; env: OMNI_HF_DATA_SUBPATH)."
+        ),
+    )
+    parser.add_argument(
+        "--local-source",
+        type=Path,
+        default=(
+            Path(os.environ["OMNI_LOCAL_DATA_SOURCE"])
+            if os.environ.get("OMNI_LOCAL_DATA_SOURCE")
+            else None
+        ),
+        help=(
+            "Fan out from this already-downloaded per-scene tree instead of "
+            "downloading from HuggingFace (env: OMNI_LOCAL_DATA_SOURCE)."
+        ),
+    )
+    parser.add_argument(
+        "--include",
+        nargs="*",
+        default=None,
+        metavar="GLOB",
+        help=(
+            "Globs to fetch (default: env OMNI_HF_DATA_INCLUDE, else the "
+            "per-camera training media). Pass --include '**' to fetch the "
+            "whole subpath, including the .usdz."
+        ),
+    )
+    parser.add_argument(
+        "--ignore",
+        nargs="*",
+        default=None,
+        metavar="GLOB",
+        help=(
+            "Globs to skip on download (default: env OMNI_HF_DATA_IGNORE, "
+            "else none — the include selector already excludes the .usdz)."
+        ),
     )
     parser.add_argument(
         "--data-dir",
@@ -106,7 +200,66 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _snapshot_download(repo: str, subpath: str, target: Path, force: bool) -> Path:
+# Source filename suffixes. RGB / HDMap are always per-camera. Captions come
+# in two flavours: PAI-NuRec ships one prompt *per camera*
+# (``<cam>_prompt.txt``); the legacy omni-dreams-scenes layout shipped one
+# prompt *per scene* (``<uuid>.prompt.txt``) fanned out to every camera.
+# A per-camera prompt wins; the scene-level prompt is the fallback.
+_RGB_SUFFIX = "_rgb.mp4"
+_HDMAP_SUFFIX = "_hdmap.mp4"
+_PROMPT_PER_CAMERA_SUFFIX = "_prompt.txt"
+_PROMPT_SCENE_SUFFIX = ".prompt.txt"
+
+# Positively select the per-camera training media. This *is* the trainable-
+# scene filter: scenes that ship none of these (recon-only scenes) download
+# nothing and fan out to nothing. Globs are matched by huggingface_hub with
+# fnmatch, where `*` spans `/`, so a bare `*_rgb.mp4` matches at any depth.
+# `*.prompt.txt` keeps the legacy scene-level caption; `*_prompt.txt` keeps
+# the PAI-NuRec per-camera caption.
+DEFAULT_INCLUDE_GLOBS = (
+    f"*{_RGB_SUFFIX}",
+    f"*{_HDMAP_SUFFIX}",
+    f"*{_PROMPT_PER_CAMERA_SUFFIX}",
+    f"*{_PROMPT_SCENE_SUFFIX}",
+)
+
+
+def _default_include_globs() -> list[str]:
+    raw = os.environ.get("OMNI_HF_DATA_INCLUDE")
+    if raw is None:
+        return list(DEFAULT_INCLUDE_GLOBS)
+    return raw.split()  # empty string -> [] -> whole subpath (see _allow_patterns)
+
+
+def _default_ignore_globs() -> list[str]:
+    raw = os.environ.get("OMNI_HF_DATA_IGNORE")
+    if raw is None:
+        return []
+    return raw.split()
+
+
+def _allow_patterns(subpath: str, include: list[str]) -> list[str] | None:
+    # huggingface_hub matches allow_patterns with fnmatch, where `*` spans
+    # `/`. So `<subpath>/*_rgb.mp4` matches a `_rgb.mp4` at *any* depth under
+    # the subpath (a literal `**/` would instead force an intermediate dir and
+    # miss files staged directly under the subpath). Scope each include glob to
+    # the configured subpath (or the whole repo when empty). An empty include
+    # list means "no filename filter": fall back to the whole subpath.
+    if not include:
+        return [f"{subpath}/**"] if subpath else None
+    prefix = f"{subpath}/" if subpath else ""
+    return [f"{prefix}{glob}" for glob in include]
+
+
+def _snapshot_download(
+    repo: str,
+    subpath: str,
+    target: Path,
+    force: bool,
+    include: list[str],
+    ignore: list[str],
+    revision: str,
+) -> Path:
     try:
         from huggingface_hub import snapshot_download
     except ImportError as exc:
@@ -118,21 +271,13 @@ def _snapshot_download(repo: str, subpath: str, target: Path, force: bool) -> Pa
     local = snapshot_download(
         repo_id=repo,
         repo_type="dataset",
+        revision=revision,
         local_dir=str(target),
-        allow_patterns=[f"{subpath}/**"],
+        allow_patterns=_allow_patterns(subpath, include),
+        ignore_patterns=ignore or None,
         force_download=force,
     )
-    return Path(local) / subpath
-
-
-# Source filename suffix → (target subdir, target extension).
-# The prompt.txt has no camera tag in its name (one caption per scene); we
-# fan it out to every camera dir so the per-camera caption lookup in
-# LocalMultiviewVideoDataset finds it under whichever camera_keys the
-# experiment selects.
-_RGB_SUFFIX = "_rgb.mp4"
-_HDMAP_SUFFIX = "_hdmap.mp4"
-_PROMPT_SUFFIX = ".prompt.txt"
+    return Path(local) / subpath if subpath else Path(local)
 
 
 def _symlink(src: Path, dst: Path) -> None:
@@ -152,47 +297,91 @@ def fanout_scene_layout(staging_root: Path, data_dir: Path) -> tuple[int, set[st
 
     for scene_dir in scenes:
         uuid = scene_dir.name
-        prompt_src = scene_dir / f"{uuid}{_PROMPT_SUFFIX}"
-        if not prompt_src.is_file():
+        # Legacy omni-dreams-scenes prefixed every file with "<uuid>.";
+        # PAI-NuRec does not. Strip the prefix when present so both fan out.
+        legacy_prefix = f"{uuid}."
+        scene_prompt = scene_dir / f"{uuid}{_PROMPT_SCENE_SUFFIX}"
+
+        rgb: dict[str, Path] = {}
+        hdmap: dict[str, Path] = {}
+        per_camera_prompt: dict[str, Path] = {}
+        for src in scene_dir.iterdir():
+            name = src.name
+            tag = name[len(legacy_prefix):] if name.startswith(legacy_prefix) else name
+            if tag.endswith(_RGB_SUFFIX):
+                rgb[tag[: -len(_RGB_SUFFIX)]] = src
+            elif tag.endswith(_HDMAP_SUFFIX):
+                hdmap[tag[: -len(_HDMAP_SUFFIX)]] = src
+            elif tag.endswith(_PROMPT_PER_CAMERA_SUFFIX):
+                # Excludes the scene-level "prompt.txt" (no leading "_").
+                per_camera_prompt[tag[: -len(_PROMPT_PER_CAMERA_SUFFIX)]] = src
+
+        # A scene is usable only if it carries at least one prompt (per-camera
+        # or scene-level). Skip otherwise, creating nothing for it.
+        if not per_camera_prompt and not scene_prompt.is_file():
             info(f"  warning: scene {uuid} missing prompt.txt; skipping")
             continue
 
-        scene_cameras: set[str] = set()
-        for src in scene_dir.iterdir():
-            name = src.name
-            prefix = f"{uuid}."
-            if not name.startswith(prefix):
-                continue
-            tag = name[len(prefix):]  # e.g. "camera_front_wide_120fov_rgb.mp4"
-            if tag.endswith(_RGB_SUFFIX):
-                cam = tag[: -len(_RGB_SUFFIX)]
-                _symlink(src.resolve(), data_dir / "video" / cam / f"{uuid}.mp4")
-                scene_cameras.add(cam)
-            elif tag.endswith(_HDMAP_SUFFIX):
-                cam = tag[: -len(_HDMAP_SUFFIX)]
-                _symlink(src.resolve(), data_dir / "hdmap" / cam / f"{uuid}.mp4")
-                scene_cameras.add(cam)
-            # Other tags (e.g. prompt.txt) handled below / ignored here.
-
-        for cam in scene_cameras:
-            _symlink(prompt_src.resolve(), data_dir / "caption" / cam / f"{uuid}.txt")
-        cameras_seen |= scene_cameras
+        for cam in sorted(set(rgb) | set(hdmap)):
+            if cam in rgb:
+                _symlink(rgb[cam].resolve(), data_dir / "video" / cam / f"{uuid}.mp4")
+            if cam in hdmap:
+                _symlink(hdmap[cam].resolve(), data_dir / "hdmap" / cam / f"{uuid}.mp4")
+            prompt_src = per_camera_prompt.get(cam)
+            if prompt_src is None and scene_prompt.is_file():
+                prompt_src = scene_prompt
+            if prompt_src is not None:
+                _symlink(prompt_src.resolve(), data_dir / "caption" / cam / f"{uuid}.txt")
+            cameras_seen.add(cam)
 
     return len(scenes), cameras_seen
 
 
 def stage_1_hf_dataset(
-    data_dir: Path, *, repo: str, subpath: str, force: bool, dry_run: bool
+    data_dir: Path,
+    *,
+    repo: str,
+    subpath: str,
+    force: bool,
+    dry_run: bool,
+    revision: str | None = None,
+    local_source: Path | None = None,
+    include: list[str] | None = None,
+    ignore: list[str] | None = None,
 ) -> None:
-    info(f"Stage 1: HF dataset {repo}/{subpath} -> {data_dir}")
-    staging_root = data_dir / f"{subpath.replace('/', '_').lower()}_staging"
-
-    if dry_run:
-        info(f"  (dry-run) would snapshot_download {repo}/{subpath} into {staging_root}")
-        info(f"  (dry-run) would fan files out into {data_dir}/{{video,hdmap,caption}}/<cam>/<uuid>.<ext>")
+    revision = default_revision() if revision is None else revision
+    include = _default_include_globs() if include is None else include
+    ignore = _default_ignore_globs() if ignore is None else ignore
+    # Local-source path: fan out from an already-downloaded per-scene tree
+    # (e.g. an rclone'd S3 copy), no HuggingFace round-trip.
+    if local_source is not None:
+        info(f"Stage 1: local source {local_source} -> {data_dir}")
+        if dry_run:
+            info(f"  (dry-run) would fan {local_source} out into "
+                 f"{data_dir}/{{video,hdmap,caption}}/<cam>/<uuid>.<ext>")
+            return
+        if not local_source.is_dir():
+            raise RuntimeError(f"--local-source path does not exist: {local_source}")
+        num_scenes, cameras = fanout_scene_layout(local_source, data_dir)
+        info(f"  Linked {num_scenes} scene(s) across cameras: {sorted(cameras)}")
         return
 
-    local = _snapshot_download(repo, subpath, staging_root, force=force)
+    label = f"{repo}@{revision}/{subpath}" if subpath else f"{repo}@{revision}"
+    info(f"Stage 1: HF dataset {label} -> {data_dir}")
+    slug = subpath.replace("/", "_").lower() or "root"
+    staging_root = data_dir / f"{slug}_staging"
+
+    if dry_run:
+        info(f"  (dry-run) would snapshot_download {label} into {staging_root} "
+             f"(include: {include or 'everything'}; ignore: {ignore or 'nothing'})")
+        info(f"  (dry-run) would fan files out into "
+             f"{data_dir}/{{video,hdmap,caption}}/<cam>/<uuid>.<ext>")
+        return
+
+    local = _snapshot_download(
+        repo, subpath, staging_root, force=force,
+        include=include, ignore=ignore, revision=revision,
+    )
     info(f"  Downloaded to {local}")
 
     num_scenes, cameras = fanout_scene_layout(local, data_dir)
@@ -220,6 +409,10 @@ def main() -> int:
                 subpath=args.subpath,
                 force=args.force,
                 dry_run=args.dry_run,
+                revision=args.revision,
+                local_source=args.local_source,
+                include=args.include,
+                ignore=args.ignore,
             )
 
     info("Workspace inputs are ready.")

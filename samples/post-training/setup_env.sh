@@ -25,9 +25,19 @@
 #
 # Env (all optional unless noted):
 #   OMNI_CACHE_DIR         Cache root (default: $HOME/.cache/omni-dreams)
-#   OMNI_DREAMS_HF_ORG     Override HF org for OmniDreams repos (default: nvidia)
-#   OMNI_HF_CKPT_REVISION  Override HF revision (default: main)
-#   OMNI_HF_DATA_SUBPATH   Override dataset subpath (default: PAI-900_intersect_PAI-300k)
+#   OMNI_DREAMS_HF_ORG     Override HF org for the omni-dreams-models checkpoint
+#                          repo only (default: nvidia)
+#   OMNI_HF_CKPT_REVISION  Override checkpoint HF revision (default: main)
+#   OMNI_HF_DATA_REPO      Sample dataset repo id, decoupled from the checkpoint
+#                          org (default: nvidia/PhysicalAI-Autonomous-Vehicles-NuRec)
+#   OMNI_HF_DATA_REVISION  Dataset branch/tag/commit the trainable scenes live on
+#   OMNI_HF_DATA_SUBPATH   Override dataset subpath within the repo
+#                          (defaults owned by prepare.py; see `prepare.py --help`)
+#   OMNI_HF_DATA_INCLUDE   Globs to fetch (default: the per-camera training
+#                          media; '**' = whole subpath, incl. the .usdz)
+#   OMNI_LOCAL_DATA_SOURCE Fan out the dataset from this already-downloaded
+#                          per-scene tree instead of HuggingFace (e.g. an
+#                          rclone'd S3 copy); skips the dataset download.
 #   OMNI_MIN_SETUP_FREE_GB Minimum free cache disk before staging (default: 150; 0 disables)
 #   OMNI_MIN_WORKTREE_FREE_GB Minimum free worktree disk before staging (default: 20; 0 disables)
 #   HF_HOME/<token>        HuggingFace token file (REQUIRED for all HF downloads)
@@ -174,10 +184,15 @@ uvx --from "huggingface_hub[cli]>=1.3.5" hf download \
   nvidia/Cosmos-Reason1-7B \
   --repo-type model --revision 3210bec0495fdc7a8d3dbb8d58da5711eab4b423
 
-# ── 6. Sample dataset (HF via prepare.py) ─────────────────────────────────────
-# prepare.py owns the dataset logic: snapshot_download from the HF repo, then
-# fan its per-scene layout out into the per-camera tree the dataset class
-# expects. Idempotent — re-runs replace symlinks only.
+# ── 6. Sample dataset (PAI-NuRec via prepare.py) ──────────────────────────────
+# prepare.py owns the dataset logic: snapshot_download from the PAI-NuRec HF
+# repo (or fan out OMNI_LOCAL_DATA_SOURCE when set, e.g. an rclone'd S3 copy),
+# then map its per-scene layout into the per-camera tree the dataset class
+# expects. Repo/revision/subpath come from OMNI_HF_DATA_REPO /
+# OMNI_HF_DATA_REVISION / OMNI_HF_DATA_SUBPATH (defaults owned by prepare.py). By
+# default it fetches only the per-camera training media (~10 GiB), which
+# positively selects the trainable scenes and skips the multi-TB .usdz.
+# Idempotent — re-runs replace symlinks only.
 # NB: HF_HUB_OFFLINE must still be 0 here (set above); we flip it to 1 *after*
 # this block so prepare.py's snapshot_download can hit the network.
 DATA_DIR="$REL/data"
