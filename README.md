@@ -65,7 +65,7 @@ Channels:
 | Workflow | Tested / expected hardware | Disk guidance |
 |---|---|---|
 | Post-training | Supported minimum is a single 8-GPU Ampere/Hopper node (`NPROC=8`). Smaller `NPROC` values are unsupported. | At least 150 GB free; 200 GB or more is recommended for caches plus training output. |
-| Inference / interactive driving | See FlashDreams. | See FlashDreams. |
+| Inference / interactive driving | Use the FlashDreams OmniDreams runner. | Follow the FlashDreams model and sample docs for cache and asset sizing. |
 
 Use a recent NVIDIA driver compatible with the CUDA stack in the selected
 workflow. The post-training quickstart was validated with driver 570.148.08
@@ -73,31 +73,37 @@ and CUDA 12.8 on 8x H100 80 GB HBM3.
 
 ### Hugging Face access
 
-The post-training sample relies on Hugging Face sample data on first run. The
-dataset you will need is:
+The post-training sample stages both checkpoints and gated Hugging Face sample
+data on first run. The sample dataset repo and branch are:
 
-- [`nvidia/omni-dreams-scenes`](https://huggingface.co/datasets/nvidia/omni-dreams-scenes) — post-training sample scenes
+- [`nvidia/PhysicalAI-Autonomous-Vehicles-NuRec`](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles-NuRec/tree/26.01) — PAI-NuRec 26.01 sample scenes for post-training
+
+You also need access to the OmniDreams model checkpoint repo under your
+authorized Hugging Face org. By default the post-training scripts look under
+`nvidia`; set `OMNI_DREAMS_HF_ORG=<YOUR-HF-ORG>` if your access lives under a
+different org.
 
 To allow automated download, create a Hugging Face token at https://huggingface.co/settings/tokens/new.
 
 ```bash
-export HF_TOKEN=<YOUR-HF-TOKEN>    # used for the Hugging Face scenes dataset
+export HF_TOKEN=<YOUR-HF-TOKEN>    # optional: used by quick access checks only
 ```
+
+The post-training runtime reads the token from
+`$OMNI_CACHE_DIR/huggingface/token`, not directly from `HF_TOKEN`. Follow the
+post-training quickstart's staging step to write the token file before running
+`setup_env.sh`.
 
 If any download fails with `401`, `403`, or a gated-repo error, verify both the
 token and the repo access above before debugging anything else.
-
-If your environment uses another authorized Hugging Face org, set
-`OMNI_DREAMS_HF_ORG=<YOUR-HF-ORG>` once in your shell. Post-training setup and
-checkpoint loading use it to derive the OmniDreams model and scene repos.
 
 ## Inference And Interactive Driving
 
 Use the FlashDreams OmniDreams runner for inference and interactive driving.
 The inputs are the same pieces described above: an initial RGB frame, a text
 prompt, and HD-map / trajectory conditioning frames. Batch inference produces
-a reproducible `mp4` sequence; the interactive sample provides the live driving
-experience.
+a reproducible `mp4` sequence; the interactive-drive integration provides the
+live driving experience.
 
 The interactive driving sample that previously lived in this repository has
 moved to FlashDreams:
