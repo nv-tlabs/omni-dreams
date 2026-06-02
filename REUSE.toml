@@ -1,4 +1,4 @@
-# REUSE.toml for Omniverse Dreams
+# REUSE.toml for NVIDIA OmniDreams
 # See: https://reuse.software/spec-3.3/#reusetoml
 #
 # This file complements per-file SPDX headers. Per-file headers are the
@@ -21,10 +21,10 @@ SPDX-FileCopyrightText = "Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. Al
 SPDX-License-Identifier = "Apache-2.0"
 
 # ---------------------------------------------------------------------------
-# samples/** — public-release sample integrations (post-training,
-# interactive-drive). NVIDIA-authored, Apache-2.0. Per-file SPDX headers
-# are present on source files; this entry stacks for clarity and to
-# explicitly mark the sample subtrees in the REUSE manifest.
+# samples/** — public-release sample integrations. NVIDIA-authored,
+# Apache-2.0. Per-file SPDX headers are present on source files; this entry
+# stacks for clarity and to explicitly mark the sample subtrees in the REUSE
+# manifest.
 # ---------------------------------------------------------------------------
 
 [[annotations]]

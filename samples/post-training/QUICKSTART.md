@@ -25,10 +25,28 @@ rented Hopper or A100 box.
   * [`nvidia/Cosmos-Predict2-2B-Video2World`](https://huggingface.co/nvidia/Cosmos-Predict2-2B-Video2World)
   * [`nvidia/Cosmos-Reason1-7B`](https://huggingface.co/nvidia/Cosmos-Reason1-7B)
   * [`nvidia/omni-dreams-models`](https://huggingface.co/nvidia/omni-dreams-models)
-  * [`nvidia/omni-dreams-scenes`](https://huggingface.co/datasets/nvidia/omni-dreams-scenes)
-    (sample dataset; <200 clips today — the launcher passes
-    `dataloader_train.repeat_factor=200` so all three experiments train
-    past their single-epoch ceiling)
+* Hugging Face account with the **NVIDIA Autonomous Vehicles NuRec Dataset
+  License Agreement** accepted (a *separate* gated license from the Open Model
+  License above — accepting one does not accept the other) on:
+  * [`nvidia/PhysicalAI-Autonomous-Vehicles-NuRec`](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles-NuRec/tree/26.01)
+    (sample dataset, "PAI-NuRec"; the trainable scenes on the `26.01`
+    branch — scenes that ship per-camera RGB+HDMap+prompt media, 4 cameras
+    each, ~177 today, trimming toward the final ~144 clip-id list. The
+    launcher passes `dataloader_train.repeat_factor=200` so all three
+    experiments train past their single-epoch ceiling.)
+
+    To accept: log in, open the dataset page, and click **"Agree and access
+    repository"** in the license box at the top. It's click-through
+    (auto-approved — access is immediate, no maintainer wait), tied to your
+    **account**. The HF token you stage in step 3 must belong to
+    that same account, or the dataset download 403s. Verify with
+    `hf auth whoami` and a non-downloading listing:
+    ```bash
+    python -c "from huggingface_hub import HfApi; \
+    print(len(HfApi().list_repo_files('nvidia/PhysicalAI-Autonomous-Vehicles-NuRec', \
+    repo_type='dataset', revision='26.01')), 'files visible')"
+    ```
+    A `GatedRepoError`/403 means that account hasn't accepted the agreement yet.
 
 ## 2. Install
 
@@ -65,7 +83,9 @@ for the validation command.
 ## 3. Stage checkpoints + dataset
 
 The runtime reads your HF token from a **file** — `HF_TOKEN` is *not* a
-substitute and will be silently ignored.
+substitute and will be silently ignored. The token must belong to the account
+that accepted the licenses in step 1 (both the Open Model License *and* the
+separate NuRec Dataset License Agreement), or the corresponding downloads 403.
 
 ```bash
 mkdir -p "$OMNI_CACHE_DIR/huggingface"
@@ -104,15 +124,27 @@ debugging, or fresh-login session needs the explicit `source`.
 `_env.sh` is idempotent and side-effect-free (no `set -e`, no `exit`, no
 positional-arg parsing — only `mkdir -p`), so re-sourcing is cheap.
 
-The sample dataset is intentionally small (<200 clips). The launcher
+The sample dataset is intentionally small (the trainable PAI-NuRec scenes —
+those that ship per-camera RGB+HDMap+prompt media; ~177 today). The launcher
 (`torchrun_smoke.sh` / `smoke_test.slurm`) passes
 `dataloader_train.repeat_factor=200` as a Hydra CLI override on every
 invocation so all three experiments have enough effective samples — without
-it E3 self-forcing exhausts at iter ~30. Override the source repo / subpath
-with `OMNI_DREAMS_HF_ORG` / `OMNI_HF_DATA_SUBPATH` to point at another
-authorized OmniDreams org or dataset slice. Use `prepare.py --repo` only for a
-fully custom dataset repo; the layout requirements (per-scene `<uuid>.<camera>_rgb.mp4`,
-`_hdmap.mp4`, `.prompt.txt`) are documented at the top of `prepare.py`.
+it E3 self-forcing exhausts at iter ~30. `prepare.py` selects the trainable
+subset by *file presence* (no manifest exists): it fetches only the
+per-camera training media from the `26.01` branch under
+`sample_set/26.01_release/`, so the ~740 reconstruction-only scenes, the
+multi-TB `.usdz`, and the bare front-wide preview mp4 are skipped (~10 GiB,
+not ~1.65 TB). Override the dataset repo / revision / subpath with
+`OMNI_HF_DATA_REPO` / `OMNI_HF_DATA_REVISION` / `OMNI_HF_DATA_SUBPATH` (the
+dataset repo is decoupled from `OMNI_DREAMS_HF_ORG`, which only selects the
+checkpoint org); set `OMNI_HF_DATA_INCLUDE='**'` to also pull the `.usdz`
+(e.g. a future differentiable-rendering run). To stage from an
+already-downloaded copy (e.g. an `rclone`'d S3 mirror) without hitting
+HuggingFace, set `OMNI_LOCAL_DATA_SOURCE=/path/to/per-scene/tree` or pass
+`prepare.py --local-source`. The layout requirements (per-scene
+`<camera>_rgb.mp4`, `_hdmap.mp4`, and `<camera>_prompt.txt` — or the legacy
+`<uuid>.`-prefixed names with a scene-level `.prompt.txt`) are documented at
+the top of `prepare.py`.
 
 ## 4. Train
 
@@ -196,9 +228,14 @@ Set `OMNI_CACHE_DIR` once; everything else derives from it via `_env.sh`.
 | `OMNI_MIN_SETUP_FREE_GB` | `150`                                       | Minimum free cache disk required by `setup_env.sh` before large downloads. Set `0` to skip. |
 | `OMNI_MIN_WORKTREE_FREE_GB` | `20`                                    | Minimum free worktree disk required by `setup_env.sh` before dataset staging. Set `0` to skip. |
 | `OMNI_MIN_TRAIN_FREE_GB` | `20`                                        | Minimum free disk required by `torchrun_smoke.sh` before launch. Set `0` to skip. |
-| `OMNI_DREAMS_HF_ORG`     | `nvidia`                                    | HF org used for `omni-dreams-models` and `omni-dreams-scenes`. Export before setup and launch if using another authorized org. |
-| `OMNI_HF_CKPT_REVISION`  | `main`                                      | Pin a release commit SHA once published. |
-| `OMNI_HF_DATA_SUBPATH`   | `PAI-900_intersect_PAI-300k`                | Subdir within the dataset repo. |
+| `OMNI_DREAMS_HF_ORG`     | `nvidia`                                    | HF org for the `omni-dreams-models` **checkpoint** repo only. Export before setup and launch if using another authorized org. |
+| `OMNI_HF_CKPT_REVISION`  | `main`                                      | Pin a checkpoint release commit SHA once published. |
+| `OMNI_HF_DATA_REPO`      | `nvidia/PhysicalAI-Autonomous-Vehicles-NuRec` | Sample dataset repo id (PAI-NuRec), decoupled from the checkpoint org. |
+| `OMNI_HF_DATA_REVISION`  | `26.01`                                     | Dataset branch/tag/commit. The trainable scenes live on this branch (the in-repo folder is `26.01_release` — branch and folder names differ). |
+| `OMNI_HF_DATA_SUBPATH`   | `sample_set/26.01_release`                  | Subdir within the dataset repo. |
+| `OMNI_HF_DATA_INCLUDE`   | `*_rgb.mp4 *_hdmap.mp4 *_prompt.txt *.prompt.txt` | Globs to fetch. Default selects the per-camera training media (≈10 GiB), which *is* the trainable-scene filter. Set `**` to fetch the whole subpath, including the multi-TB `.usdz` (e.g. future differentiable-rendering runs). |
+| `OMNI_LOCAL_DATA_SOURCE` | _(unset)_                                   | Fan out the dataset from this local per-scene tree (e.g. an rclone'd S3 copy) instead of HuggingFace. |
+| `OMNI_HF_DATA_IGNORE`    | _(none)_                                    | Space-separated globs skipped on download. Empty by default — the include selector already excludes the `.usdz`. |
 
 `CUDA_HOME`, `LD_LIBRARY_PATH`, `PYTHONPATH` are set automatically by
 `_env.sh` + the launcher; you don't normally touch them.

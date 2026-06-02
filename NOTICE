@@ -1,4 +1,4 @@
-Omniverse Dreams — Third-Party Open Source Software Notice
+NVIDIA OmniDreams — Third-Party Open Source Software Notice
 ===========================================================
 
 This project will download and install additional third-party open
@@ -9,18 +9,17 @@ source projects before use.
 Scope of this notice
 -------------------------------------------------------------------------------
 
-Omniverse Dreams is distributed as source (Python, CUDA/C++ extension source,
+NVIDIA OmniDreams is distributed as source (Python, CUDA/C++ extension source,
 and package manifests). NVIDIA does not redistribute any third-party binaries
-in this repository. However, building and running Omniverse Dreams on your
+in this repository. However, building and running OmniDreams on your
 machine triggers third-party downloads that are fetched directly onto your
 host (not staged or re-hosted by NVIDIA):
 
   1. `uv sync` (and `pip install`) resolves Python runtime dependencies
-     from `samples/interactive-drive/pyproject.toml`, fetching wheels from
-     PyPI and NVIDIA-internal package indexes onto your environment.
-     Headless / Dockerized batch inference is
-     handled by the companion `flashdreams` project at
-     https://github.com/NVIDIA/flashdreams (private at time of writing).
+     from the post-training package manifests, fetching wheels from PyPI
+     and NVIDIA package indexes onto your environment. Runtime inference
+     samples are handled by the companion `flashdreams` project at
+     https://github.com/NVIDIA/flashdreams.
 
   2. First-run asset pulls from Hugging Face Hub stage model
      checkpoints, tokenizer weights, and sample clips onto your
@@ -46,9 +45,6 @@ with this release are:
     subtree, including HuggingFace `diffusers`, HuggingFace `transformers`,
     OpenAI CLIP, mlfoundations `open_clip`, Self-Forcing, nanoGPT, `fvcore`,
     `torchtitan`, Intel OIDN, IRASim, `diffusion_policy`, and RetinaFace.
-
-  * `samples/interactive-drive/NOTICE` — provenance for the inlined
-    `interactive-drive` sample subtree (scoped to that subtree only).
 
 Per-file SPDX license metadata is recorded in `REUSE.toml` at the repo root
 and in `post-training/REUSE.toml` for the post-training subtree.

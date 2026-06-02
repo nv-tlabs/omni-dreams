@@ -1,4 +1,4 @@
-## Omniverse Dreams OSS Contribution Rules
+## NVIDIA OmniDreams OSS Contribution Rules
 
 #### License of Contributions
 
@@ -16,8 +16,8 @@ for the post-training subtree) so attribution stays accurate. See
 
 * All enhancement, bugfix, or change requests must begin with the creation
   of an
-  [Omniverse Dreams Issue Request](https://github.com/NVIDIA/omni-dreams/issues).
-  * The issue request must be reviewed by Omniverse Dreams engineers and
+  [NVIDIA OmniDreams Issue Request](https://github.com/NVIDIA/omni-dreams/issues).
+  * The issue request must be reviewed by OmniDreams engineers and
     approved prior to code review.
 
 
@@ -28,28 +28,17 @@ for the post-training subtree) so attribution stays accurate. See
   extending / fixing existing functionality.
 
 - Python code is formatted and linted with `ruff`, type-checked with
-  `pyright`, and tested with `pytest`. The
-  [`samples/interactive-drive/.pre-commit-config.yaml`](samples/interactive-drive/.pre-commit-config.yaml)
-  pre-commit hook runs the lint + format check + pyright on every commit;
-  install it once with:
-  ```bash
-  cd samples/interactive-drive
-  uv run pre-commit install
-  ```
+  `pyright`, and tested with `pytest` where applicable.
 
 - Format and lint your changes locally before opening a PR:
   ```bash
-  cd samples/interactive-drive
-  uv run ruff format .
-  uv run ruff check .
-  uv run pyright
+  python -m ruff format <changed-python-paths>
+  python -m ruff check <changed-python-paths>
   ```
 
 - Run the relevant test suite before submitting:
   ```bash
-  cd samples/interactive-drive
-  uv run pytest -m "not gpu and not xvfb"   # cpu-only fast suite
-  uv run pytest -m gpu                       # GPU-bound tests (require CUDA)
+  python -m pytest <relevant-test-paths>
   ```
 
 - Avoid introducing unnecessary complexity into existing code so that
@@ -81,12 +70,10 @@ for the post-training subtree) so attribution stays accurate. See
 - All OSS components must contain accompanying documentation (READMEs)
   describing the functionality, dependencies, and known issues.
 
-  - See `samples/interactive-drive/README.md` for an existing-sample
-    reference.
+  - See `samples/post-training/README.md` for an existing-sample reference.
 
 - New components or significant new functionality must come with an
-  accompanying test under `samples/interactive-drive/tests/` (or the
-  relevant subtree).
+  accompanying test under the relevant subtree.
 
 - Vendored third-party files, if added in the future, must retain their
   upstream license. NVIDIA modifications to those files should preserve the
@@ -108,7 +95,7 @@ Developer workflow for code contributions is as follows:
 
 1. Developers must first
    [fork](https://help.github.com/en/articles/fork-a-repo) the
-   [upstream](https://github.com/NVIDIA/omni-dreams) Omniverse Dreams OSS
+   [upstream](https://github.com/NVIDIA/omni-dreams) OmniDreams OSS
    repository.
 
 2. Git clone the forked repository and push changes to the personal fork.
@@ -127,17 +114,17 @@ Developer workflow for code contributions is as follows:
    to merge the changes from a branch of the fork into a selected branch
    of upstream.
    * Exercise caution when selecting the source and target branches for
-     the PR. Note that versioned releases of Omniverse Dreams OSS are
+     the PR. Note that versioned releases of OmniDreams OSS are
      posted to `release/` branches of the upstream repo.
    * Creation of a PR kicks off the code review process.
-   * At least one Omniverse Dreams engineer will be assigned for the
+   * At least one OmniDreams engineer will be assigned for the
      review.
    * While under review, mark your PRs as work-in-progress by prefixing
      the PR title with `[WIP]`.
 
 4. The PR will be accepted and the corresponding issue closed only after
    adequate testing has been completed, by the developer and / or the
-   Omniverse Dreams engineer reviewing the code.
+   OmniDreams engineer reviewing the code.
 
 
 #### Signing Your Work
