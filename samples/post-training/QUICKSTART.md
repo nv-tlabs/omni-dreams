@@ -56,10 +56,8 @@ with a small `$HOME` quota the extraction can fail with "No space left on
 device"; keep the cache on a filesystem with at least 150 GB free.
 
 ```bash
-# Clone the repo URL your NVIDIA contact provided.
-git clone <repo-url>
-cd <repo-dir>
-git checkout <integration-branch>      # e.g. dev/jmccaffrey/post-training-integ
+git clone https://github.com/NVIDIA/omni-dreams.git
+cd omni-dreams
 
 # Point caches at a writable filesystem with at least 150 GB free.
 export OMNI_CACHE_DIR=$HOME/.cache/omni-dreams
@@ -157,6 +155,21 @@ shipped values are placeholders for the maintainer's cluster).
 
 ### Direct torchrun (single rented 8-GPU node, no Slurm)
 
+The three experiments are the release training pipeline:
+
+- **E1 student-init (L2a)** initializes and fine-tunes the causal student on
+  HDMap-conditioned driving clips.
+- **E2 teacher (L1b)** trains and validates the higher-context bidirectional
+  teacher.
+- **E3 self-forcing (L0)** distills the E2 teacher signal back into the
+  autoregressive student.
+
+The full pipeline feeds the E1 student-init checkpoint and E2 teacher
+checkpoint into E3. These smoke commands can run independently because the
+release ancestry checkpoints are pre-staged by `setup_env.sh`. The `L2a`,
+`L1b`, and `L0` labels describe checkpoint ancestry; they are not launcher
+arguments or Hydra syntax.
+
 ```bash
 bash samples/post-training/torchrun_smoke.sh 1   # E1 student-init  (L2a)
 bash samples/post-training/torchrun_smoke.sh 2   # E2 teacher       (L1b)
@@ -195,6 +208,29 @@ NPROC=8 bash samples/post-training/torchrun_smoke.sh 1
 Trailing positional args after the experiment number are forwarded to
 `scripts.train` verbatim; Hydra takes the *last* value when a key is
 repeated, so your override wins over the launcher's `=8` defaults.
+
+### Common Hydra overrides
+
+Pass overrides after the experiment number. Keep distributed-shape overrides
+compatible with the selected world size.
+
+| Override | Use |
+|----------|-----|
+| `trainer.max_iter=500` | Cap training iterations for faster smoke/debug runs. |
+| `checkpoint.save_iter=1000` | Change checkpoint save cadence. |
+| `model.config.fsdp_shard_size=8` | Set FSDP shard group size; must divide the world size. |
+| `model_parallel.context_parallel_size=8` | Set context parallel size; must divide the world size. E1/E2 default to 8 in the launcher. |
+| `dataloader_train.repeat_factor=200` | Expand the effective sample count. The launcher sets this for all three experiments. |
+| `optimizer.lr=1e-4` | Override the optimizer learning rate for quick experiments. |
+| `job.name=my-smoke-run` | Set the output/job name. |
+
+Examples:
+
+```bash
+bash samples/post-training/torchrun_smoke.sh 1 trainer.max_iter=500
+bash samples/post-training/torchrun_smoke.sh 1 optimizer.lr=1e-4 checkpoint.save_iter=500
+NPROC=16 bash samples/post-training/torchrun_smoke.sh 3 model_parallel.context_parallel_size=2 model.config.fsdp_shard_size=8
+```
 
 ---
 
