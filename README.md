@@ -1,5 +1,9 @@
 # NVIDIA OmniDreams
 
+## Resources
+
+[Research blog](https://research.nvidia.com/labs/sil/projects/omnidreams-blog/) | [White paper](https://research.nvidia.com/labs/sil/projects/omnidreams-blog/paper.pdf) | [Model weights](https://huggingface.co/nvidia/omni-dreams-models)
+
 NVIDIA OmniDreams is a world model that generates multi-camera photorealistic
 video for autonomous-driving simulation in real time.
 
@@ -10,6 +14,10 @@ The model consumes:
 - Per-frame coarse HD map image and trajectory poses
 
 It produces photorealistic video frames in chunks.
+
+![OmniDreams generation: per-frame HD-map conditioning (top) and the generated camera video (bottom)](assets/gallery/rank03_37113280-a033-4be4-afdd-cb199299e028_composite_400.gif)
+
+*A 20-second OmniDreams rollout. Top: the per-frame HD-map conditioning. Bottom: the generated front-view video.*
 
 ## How the pieces fit together
 
@@ -37,12 +45,6 @@ For interactive driving and offline, reproducible batch `mp4` video
 generation, see the companion [`flashdreams`](https://github.com/NVIDIA/flashdreams)
 project.
 
-## Resources
-
-- **Research blog** — [research.nvidia.com/labs/sil/projects/omnidreams-blog](https://research.nvidia.com/labs/sil/projects/omnidreams-blog/)
-- **White paper** — [*NVIDIA OmniDreams: Real-Time Generative World Model for Closed-Loop Autonomous Vehicle Simulation*](https://research.nvidia.com/labs/sil/projects/omnidreams-blog/paper.pdf)
-- **Model weights** — [`nvidia/omni-dreams-models`](https://huggingface.co/nvidia/omni-dreams-models) on Hugging Face
-
 ## Community
 
 Join us on the NVIDIA Omniverse Discord to share your results, attend office
@@ -54,9 +56,9 @@ If you are new, start with the
 
 Channels:
 
-- [`#omnidreams`](https://discord.gg/bsjzh4uZ)
-- [`#flashdreams`](https://discord.gg/yTdHDqFP)
-- [`#world-model-chit-chat`](https://discord.gg/APbw7EPk)
+- [`#omnidreams`](https://discord.gg/cruUPk9tuS)
+- [`#flashdreams`](https://discord.gg/cMt2mHm4aN)
+- [`#world-models-chit-chat`](https://discord.gg/AkcK7NVGQD)
 
 ## Prerequisites
 

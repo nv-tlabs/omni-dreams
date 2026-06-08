@@ -99,7 +99,8 @@ exporting `OMNI_CACHE_DIR`. See the script header for the rest
 ### 4. Smoke test
 
 ```bash
-uv run pytest tests/test_imports_clean.py
+post-training/.venv/bin/pytest samples/post-training/tests/test_imports_clean.py
+post-training/.venv/bin/pytest samples/post-training/tests/test_cuda_stack.py
 ```
 
 ## Launch training
@@ -167,7 +168,7 @@ Set in `smoke_test.slurm`; documented here so torchrun-only users get them too.
 - `tests/` — `test_imports_clean.py` is the redaction smoke (CPU-only, runs
   on every PR; catches a vendored-tree regression that re-introduces
   internal strings, and override mistakes that hardcode them).
-- `SKILL.md` — agent-runnable recipe for running E1/E2/E3 at 8 → 256 H100,
+- [`skills/run-post-training-sample/SKILL.md`](../../skills/run-post-training-sample/SKILL.md) — agent-runnable recipe for running E1/E2/E3 at 8 → 256 H100,
   with the FSDP × CP scaling matrix.
 
 ## Dataset organization

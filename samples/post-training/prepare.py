@@ -143,8 +143,7 @@ def parse_args() -> argparse.Namespace:
         "--subpath",
         default=os.environ.get("OMNI_HF_DATA_SUBPATH", DEFAULT_SUBPATH),
         help=(
-            f"Subdirectory within the repo "
-            f"(default: {DEFAULT_SUBPATH}; env: OMNI_HF_DATA_SUBPATH)."
+            f"Subdirectory within the repo (default: {DEFAULT_SUBPATH}; env: OMNI_HF_DATA_SUBPATH)."
         ),
     )
     parser.add_argument(
@@ -265,7 +264,8 @@ def _snapshot_download(
     except ImportError as exc:
         raise RuntimeError(
             "huggingface_hub is not installed. Run "
-            "`uv sync --extra=cu128` from samples/post-training/ first."
+            "`uv sync --extra=cu128` or `uv sync --extra=cu130` from "
+            "post-training/ first."
         ) from exc
     target.mkdir(parents=True, exist_ok=True)
     local = snapshot_download(
@@ -307,7 +307,7 @@ def fanout_scene_layout(staging_root: Path, data_dir: Path) -> tuple[int, set[st
         per_camera_prompt: dict[str, Path] = {}
         for src in scene_dir.iterdir():
             name = src.name
-            tag = name[len(legacy_prefix):] if name.startswith(legacy_prefix) else name
+            tag = name[len(legacy_prefix) :] if name.startswith(legacy_prefix) else name
             if tag.endswith(_RGB_SUFFIX):
                 rgb[tag[: -len(_RGB_SUFFIX)]] = src
             elif tag.endswith(_HDMAP_SUFFIX):
@@ -357,8 +357,10 @@ def stage_1_hf_dataset(
     if local_source is not None:
         info(f"Stage 1: local source {local_source} -> {data_dir}")
         if dry_run:
-            info(f"  (dry-run) would fan {local_source} out into "
-                 f"{data_dir}/{{video,hdmap,caption}}/<cam>/<uuid>.<ext>")
+            info(
+                f"  (dry-run) would fan {local_source} out into "
+                f"{data_dir}/{{video,hdmap,caption}}/<cam>/<uuid>.<ext>"
+            )
             return
         if not local_source.is_dir():
             raise RuntimeError(f"--local-source path does not exist: {local_source}")
@@ -372,15 +374,24 @@ def stage_1_hf_dataset(
     staging_root = data_dir / f"{slug}_staging"
 
     if dry_run:
-        info(f"  (dry-run) would snapshot_download {label} into {staging_root} "
-             f"(include: {include or 'everything'}; ignore: {ignore or 'nothing'})")
-        info(f"  (dry-run) would fan files out into "
-             f"{data_dir}/{{video,hdmap,caption}}/<cam>/<uuid>.<ext>")
+        info(
+            f"  (dry-run) would snapshot_download {label} into {staging_root} "
+            f"(include: {include or 'everything'}; ignore: {ignore or 'nothing'})"
+        )
+        info(
+            f"  (dry-run) would fan files out into "
+            f"{data_dir}/{{video,hdmap,caption}}/<cam>/<uuid>.<ext>"
+        )
         return
 
     local = _snapshot_download(
-        repo, subpath, staging_root, force=force,
-        include=include, ignore=ignore, revision=revision,
+        repo,
+        subpath,
+        staging_root,
+        force=force,
+        include=include,
+        ignore=ignore,
+        revision=revision,
     )
     info(f"  Downloaded to {local}")
 
