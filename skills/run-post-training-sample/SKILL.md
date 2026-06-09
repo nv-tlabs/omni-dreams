@@ -1,4 +1,10 @@
-# SKILL.md — running the three post-training experiments
+---
+name: run-post-training-sample
+description: Bring up the OmniDreams post-training sample and run/report the E1, E2, and E3 release experiments on 8-256 H100 GPUs. Use when validating samples/post-training, Slurm or torchrun launches, FSDP/CP scaling, finite-loss smoke tests, or post-training environment setup.
+license: Apache-2.0
+---
+
+# Run Post-Training Sample Experiments
 
 You are a test agent. Your job is to (a) bring up the post-training environment
 on a Linux x86-64 box with NVIDIA H100s, (b) run each of the three release
@@ -8,11 +14,11 @@ upstream bugs — surface them.
 
 ## Authoritative docs (read these first)
 
-* [`samples/post-training/QUICKSTART.md`](./QUICKSTART.md) — the four-step
+* [`samples/post-training/QUICKSTART.md`](../../samples/post-training/QUICKSTART.md) — the four-step
   out-of-box flow (install, set `OMNI_CACHE_DIR` + HF token, `setup_env.sh`,
   `torchrun_smoke.sh`). **The canonical dataset path lives here**; check the
   Dataset section before staging — that path is being relocated.
-* [`samples/post-training/README.md`](./README.md) — file-layout reference
+* [`samples/post-training/README.md`](../../samples/post-training/README.md) — file-layout reference
   for this sample's wrappers (`_env.sh`, `setup_env.sh`, `torchrun_smoke.sh`,
   `smoke_test.slurm`, `triton_per_rank_wrap.sh`).
 * [`post-training/docs/setup.md`](../../post-training/docs/setup.md) — release
@@ -21,7 +27,7 @@ upstream bugs — surface them.
 * [`post-training/README.md`](../../post-training/README.md) — release tree
   overview.
 
-The release tree itself lives at `./post-training/`. It is **never edited in
+The release tree itself lives at `post-training/`. It is **never edited in
 place** — every adaptation goes through this `samples/post-training/`
 directory.
 
@@ -40,7 +46,7 @@ size to `NPROC × NNODES` and to the FSDP/CP overrides** (table below).
 
 ## Step 0 — environment
 
-Follow [QUICKSTART §1–§3](./QUICKSTART.md#1-prerequisites). The order matters
+Follow [QUICKSTART §1–§3](../../samples/post-training/QUICKSTART.md#1-prerequisites). The order matters
 on HPC head nodes with small `$HOME` quotas: **set `OMNI_CACHE_DIR` (and
 `UV_CACHE_DIR`) before `uv sync`**, or uv will land flash-attn extraction in
 `$HOME/.cache/uv` and may fail with `No space left on device`.
@@ -75,7 +81,7 @@ bash samples/post-training/setup_env.sh
 `setup_env.sh` is idempotent: re-run after a cache wipe and it will skip
 what's already staged. If it errors on HF gating, accept the NVIDIA Open
 Model License on each gated repo listed in
-[QUICKSTART §1](./QUICKSTART.md#1-prerequisites) and re-run.
+[QUICKSTART §1](../../samples/post-training/QUICKSTART.md#1-prerequisites) and re-run.
 
 ## Step 1 — pick a launch shape per experiment
 
@@ -138,7 +144,7 @@ sbatch --nodes=2 --gpus-per-node=8 \
 …with `FSDP=8 CP=2` plumbed through to the Hydra overrides
 (`model.config.fsdp_shard_size=$FSDP model_parallel.context_parallel_size=$CP`).
 If `smoke_test.slurm` doesn't already accept these envs, edit it once — keep
-the change local to this directory and not in `./post-training/`.
+the change local to this directory and not in `post-training/`.
 
 ## Step 2 — run
 
@@ -175,7 +181,7 @@ The training expects a video/caption/(hdmap) tree under a `data_root`
 discovered at runtime; the experiment defaults register that as `data` in the
 release tree's cwd. **Do not hardcode the dataset path in this file or in the
 launcher** — `setup_env.sh` populates the directory and
-[QUICKSTART §3](./QUICKSTART.md#3-stage-checkpoints--dataset) names the
+[QUICKSTART §3](../../samples/post-training/QUICKSTART.md#3-stage-checkpoints--dataset) names the
 canonical location. That path is being relocated; if the QUICKSTART says one
 location and `setup_env.sh` reports another, trust QUICKSTART and re-run the
 staging step.
@@ -252,7 +258,7 @@ Acceptance:
 
 ## Hard rules
 
-1. Never edit anything inside `./post-training/`. If a fix has to land
+1. Never edit anything inside `post-training/`. If a fix has to land
    there, surface it; the maintainer will push upstream and re-vendor.
 2. Don't bypass `triton_per_rank_wrap.sh`. It exists to defeat a real
    `os.replace ENOTEMPTY` race when 8 ranks compile identical Triton
