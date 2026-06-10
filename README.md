@@ -2,7 +2,7 @@
 
 ## Resources
 
-[Research blog](https://research.nvidia.com/labs/sil/projects/omnidreams-blog/) | [White paper](https://research.nvidia.com/labs/sil/projects/omnidreams-blog/paper.pdf) | [Model weights](https://huggingface.co/nvidia/omni-dreams-models)
+[Research blog](https://research.nvidia.com/labs/sil/projects/omnidreams-blog/) | [White paper](https://arxiv.org/abs/2606.03159) | [Model weights](https://huggingface.co/nvidia/omni-dreams-models)
 
 NVIDIA OmniDreams is a world model that generates multi-camera photorealistic
 video for autonomous-driving simulation in real time.
