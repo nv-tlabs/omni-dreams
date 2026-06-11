@@ -13,6 +13,7 @@ convention already in use by ``predict2_distill``: each entry is written under
 its own DCP sub-directory (``optim_<k>/``, ``scheduler_<k>/``).
 """
 
+import gc
 import os
 import time
 from typing import Any
@@ -32,6 +33,47 @@ from omnidreams._src.predict2.checkpointer.dcp import (
 from omnidreams._src.predict2.checkpointer.dcp import (
     DistributedCheckpointer as _DistributedCheckpointer,
 )
+
+
+def _reclaim_cuda_cache_before_save(iteration: int) -> None:
+    """Free the allocator's idle reserved cache before a checkpoint save.
+
+    On the E3 self-forcing recipe (8xH100 80 GB, three resident networks) the
+    caching allocator holds ~20 GB reserved beyond live tensors at save time
+    (peak reserved ~75 GB vs ~54 GB allocated), while NVML-free is <1 GB. The
+    save is sharded (``get_{model,optimizer}_state_dict`` with no
+    ``full_state_dict`` + ``dedup_save_to_lowest_rank``), so it does not gather
+    full tensors, but its transients still need NVML-free headroom the driver
+    can hand out: NCCL's per-collective workspace for the save plan/metadata
+    exchange and the FileSystem writer's host/device staging copies. Both
+    allocate *outside* the caching allocator, so they OOM with <1 GB free
+    despite the idle reserved cache. Returning that cache to the driver here
+    (more effective under ``expandable_segments``, which can release whole
+    segments) restores ~20 GB of headroom; mirrors the ``empty_cache()`` in
+    ``load()``. If this proves insufficient, the next lever is
+    ``StateDictOptions(cpu_offload=True)`` on the model/optimizer state dicts.
+
+    Logs the reclaimed headroom once per save (rank0).
+    """
+    if not torch.cuda.is_available():
+        gc.collect()
+        return
+    gib = 1024**3
+    free0, _ = torch.cuda.mem_get_info()
+    resv0 = torch.cuda.memory_reserved()
+    alloc0 = torch.cuda.memory_allocated()
+    gc.collect()
+    torch.cuda.empty_cache()
+    free1, _ = torch.cuda.mem_get_info()
+    resv1 = torch.cuda.memory_reserved()
+    log.info(
+        f"[ckpt-save iter {iteration}] reclaim before/after empty_cache: "
+        f"reserved {resv0 / gib:.1f}->{resv1 / gib:.1f} GiB | "
+        f"allocated {alloc0 / gib:.1f} GiB | "
+        f"nvml_free {free0 / gib:.1f}->{free1 / gib:.1f} GiB "
+        f"(+{(free1 - free0) / gib:.1f} GiB headroom for the save)",
+        rank0_only=True,
+    )
 
 
 class DistributedCheckpointer(_DistributedCheckpointer):
@@ -153,6 +195,11 @@ class DistributedCheckpointer(_DistributedCheckpointer):
 
         if self.callbacks is not None:
             self.callbacks.on_save_checkpoint_start(model, iteration)
+
+        # Reclaim the training step's idle reserved cache so the sharded DCP
+        # save's out-of-allocator transients have NVML-free headroom; see the
+        # helper's docstring for the full rationale.
+        _reclaim_cuda_cache_before_save(iteration)
 
         model_dict = model.model_dict()
         checkpoint_file = f"iter_{iteration:09}"
