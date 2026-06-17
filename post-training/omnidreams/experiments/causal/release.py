@@ -188,8 +188,8 @@ TEACHER_COSMOS2_2B_HDMAP_VAE: LazyDict = LazyDict(
         model=dict(
             config=dict(
                 # Bidirectional teacher: full-block (state_t == num_frame_per_block).
-                # num_frame_per_block=24,
-                # max_latent_frames_per_gpu=24,
+                num_frame_per_block=24,
+                max_latent_frames_per_gpu=24,
                 state_t=24,
                 fsdp_shard_size=8,
                 shift=5,
