@@ -10,6 +10,11 @@ rented Hopper or A100 box.
   (CUDA 12.8.1 compatible). The flow has been tested on 8x H100 80 GB HBM3
   with driver 570.148.08 and CUDA 12.8. Smaller `NPROC` values are not
   supported by the released configs.
+  Experiment 3 (self-forcing DMD distillation) is the memory-tightest smoke
+  recipe and runs near the 80 GB HBM ceiling on 8x H100 80 GB nodes. Use the
+  documented `uv sync --extra=cu128` install path; DeviceMonitor observed
+  `peak_gpu_mem_reserved` around 71 GB with `cu128` versus 75 GB with `cu130`,
+  and the `cu130` stack can OOM while saving the iteration-50 checkpoint.
 * At least 150 GB of free disk for dependencies, Hugging Face caches, dataset
   staging, Triton caches, and training output. 200 GB or more is recommended.
   `setup_env.sh` enforces a 150 GB cache preflight and a 20 GB worktree
