@@ -1,8 +1,10 @@
-# NVIDIA OmniDreams
+# NVIDIA Cosmos-Dreams (fka NVIDIA OmniDreams)
+
+Note to developers: NVIDIA Cosmos-Dreams was formerly named NVIDIA OmniDreams. OmniDreams was the research name for this model. It has been renamed Cosmos-Dreams to align with NVIDIA Cosmos family of world foundation models. The model weights, repository, and URL are unchanged. References to OmniDreams in the research blog, technical report, and model card refer to Cosmos-Dreams. 
 
 **Resources:** [Research blog](https://research.nvidia.com/labs/sil/projects/omnidreams-blog/) | [Technical Report](https://arxiv.org/abs/2606.03159) | [Model weights](https://huggingface.co/nvidia/omni-dreams-models)
 
-NVIDIA OmniDreams is a world model that generates multi-camera photorealistic
+NVIDIA Cosmos-Dreams is a world model that generates multi-camera photorealistic
 video for autonomous-driving simulation in real time.
 
 The model consumes:
@@ -15,7 +17,7 @@ It produces photorealistic video frames in chunks.
 
 ## How the pieces fit together
 
-An OmniDreams rollout starts from one real RGB frame. That frame anchors the
+Rollout starts from one real RGB frame. That frame anchors the
 appearance of the scene. The text prompt describes the driving context, while
 the per-frame HD map image and trajectory poses provide the structured
 conditioning for each generated chunk. The world model autoregressively
@@ -24,7 +26,7 @@ so the scene can continue over time.
 
 Interactive inference and live driving demos now live in the companion
 [`flashdreams`](https://github.com/NVIDIA/flashdreams) project. This repo owns
-the OmniDreams post-training sample and release tree.
+the post-training sample and release tree.
 
 This repository contains the following samples for demonstration:
 
@@ -42,7 +44,7 @@ project.
 ## Community
 
 Join us on the NVIDIA Omniverse Discord to share your results, attend office
-hours, and take part in technical discussion with the NVIDIA OmniDreams team and
+hours, and take part in technical discussion with the NVIDIA Cosmos-Dreams team and
 community.
 
 If you are new, start with the
@@ -118,7 +120,7 @@ for multi-tenant clusters.
 
 # License and Attribution
 
-OmniDreams is licensed under the [Apache License, Version 2.0](LICENSE).
+Cosmos-Dreams is licensed under the [Apache License, Version 2.0](LICENSE).
 Third-party runtime dependencies are fetched by package managers or companion
 projects such as `flashdreams`.
 
