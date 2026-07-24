@@ -9,6 +9,12 @@ dataset, composed against the `post-training/` release tree.
 > The supported minimum post-training launch uses 8 GPUs (`NPROC=8` on a
 > single node). Smaller `NPROC` values are unsupported and the launcher fails
 > early before starting `torchrun`.
+> Experiment 3 is the memory-tightest recipe on 8x H100 80 GB nodes. Current
+> `main` reclaims the CUDA allocator cache before the DCP save and is expected
+> to restore the save-time headroom needed to avoid the checkpoint-save OOM.
+> For older revisions or constrained environments, `cu128` remains a
+> lower-memory fallback: DeviceMonitor reserved-memory peaks were about 71 GB
+> versus 75 GB with `cu130`.
 > Plan for at least 150 GB of free disk, with 200 GB or more recommended.
 > `setup_env.sh` and `torchrun_smoke.sh` run disk preflights before the
 > expensive setup and launch phases.
