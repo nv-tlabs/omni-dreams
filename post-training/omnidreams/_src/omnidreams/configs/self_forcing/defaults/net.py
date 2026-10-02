@@ -7,8 +7,6 @@ from hydra.core.config_store import ConfigStore
 
 from omnidreams._src.imaginaire.lazy_config import LazyCall as L
 from omnidreams._src.imaginaire.lazy_config import LazyDict
-from omnidreams._src.predict2.networks.minimal_v1_lvg_dit import MinimalV1LVGDiT
-from omnidreams._src.predict2.networks.minimal_v4_dit import SACConfig
 from omnidreams._src.omnidreams.networks.bidirectional_crossview_cosmos import BidirectionalCrossViewCosmosDiT
 from omnidreams._src.omnidreams.networks.causal_cosmos import CosmosCausalDiT
 from omnidreams._src.omnidreams.networks.causal_cosmos_hdmap import CosmosCausalHdmapDiT
@@ -17,6 +15,8 @@ from omnidreams._src.omnidreams.networks.causal_crossview_hdmap_cosmos import (
     CausalCrossViewCosmosDiTHDMapConcat,
 )
 from omnidreams._src.omnidreams.networks.minimal_v1_lvg_dit_hdmap import MinimalV1LVGDiTHdmapConcat
+from omnidreams._src.predict2.networks.minimal_v1_lvg_dit import MinimalV1LVGDiT
+from omnidreams._src.predict2.networks.minimal_v4_dit import SACConfig
 
 COSMOS_V1_7B_NET_MININET: LazyDict = L(MinimalV1LVGDiT)(
     max_img_h=240,
@@ -207,6 +207,7 @@ CAUSAL_COSMOS_V2_2B_NET_MININET: LazyDict = L(CosmosCausalDiT)(
     use_wan_fp32_strategy=True,
     postpone_checkpoint=True,
     on_the_fly_checkpoint=True,
+    framewise_adaln=False,
 )
 
 CAUSAL_COSMOS_V2_2B_NET_MININET_HDMAP: LazyDict = L(CosmosCausalHdmapDiT)(
@@ -245,6 +246,7 @@ CAUSAL_COSMOS_V2_2B_NET_MININET_HDMAP: LazyDict = L(CosmosCausalHdmapDiT)(
     additional_init_method="random_init",
     postpone_checkpoint=True,
     on_the_fly_checkpoint=True,
+    framewise_adaln=False,
 )
 
 CAUSAL_COSMOS_V2_2B_NET_MININET_MV: LazyDict = L(CausalCrossViewCosmosDiT)(

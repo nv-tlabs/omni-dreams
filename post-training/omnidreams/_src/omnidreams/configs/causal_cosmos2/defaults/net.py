@@ -7,7 +7,6 @@ from hydra.core.config_store import ConfigStore
 
 from omnidreams._src.imaginaire.lazy_config import LazyCall as L
 from omnidreams._src.imaginaire.lazy_config import LazyDict
-from omnidreams._src.predict2.networks.minimal_v4_dit import SACConfig
 from omnidreams._src.omnidreams.networks.causal_cosmos import CosmosCausalDiT
 from omnidreams._src.omnidreams.networks.causal_cosmos_hdmap import CosmosCausalHdmapDiT
 
@@ -15,6 +14,7 @@ from omnidreams._src.omnidreams.networks.causal_cosmos_hdmap import CosmosCausal
 # from omnidreams._src.predict2.configs.video2world.defaults.net import COSMOS_V1_2B_NET_MININET
 from omnidreams._src.omnidreams.networks.minimal_v1_lvg_dit import MinimalV1LVGDiT
 from omnidreams._src.omnidreams.networks.minimal_v1_lvg_dit_hdmap import MinimalV1LVGDiTHdmapConcat
+from omnidreams._src.predict2.networks.minimal_v4_dit import SACConfig
 
 COSMOS_V2_2B_NET_MININET: LazyDict = L(CosmosCausalDiT)(
     max_img_h=240,
@@ -46,6 +46,7 @@ COSMOS_V2_2B_NET_MININET: LazyDict = L(CosmosCausalDiT)(
     crossattn_proj_in_channels=100352,
     crossattn_emb_channels=1024,
     use_wan_fp32_strategy=True,
+    framewise_adaln=False,
 )
 
 COSMOS_V2_14B_NET_MININET = copy.deepcopy(COSMOS_V2_2B_NET_MININET)
@@ -83,6 +84,7 @@ COSMOS_V2_2B_NET_MININET_HDMAP: LazyDict = L(CosmosCausalHdmapDiT)(
     crossattn_proj_in_channels=100352,
     crossattn_emb_channels=1024,
     use_wan_fp32_strategy=True,
+    framewise_adaln=False,
 )
 
 ## teacher part

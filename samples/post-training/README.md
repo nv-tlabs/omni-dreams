@@ -137,6 +137,19 @@ commented placeholders for `--account` and `--partition`. Either pass them
 on the `sbatch` command line, or uncomment and edit the `##SBATCH` lines at
 the top of the file.
 
+### Optional framewise AdaLN
+
+Set `model.config.net.framewise_adaln=true` to evaluate each block's three
+AdaLN-LoRA modulation MLPs once per latent frame on compact `[B, T, D]`
+embeddings, then gather their outputs into the local token sequence. The
+token-to-frame map follows the existing contiguous CP partition, so the
+optimization works with CP=1 or CP>1 without requiring frame-aligned shards
+and does not depend on the attention implementation. Parameter shapes and
+checkpoint keys are unchanged. The transform is mathematically equivalent,
+but the smaller GEMM shape changes reduced-precision accumulation order, so
+bitwise-identical outputs and gradients are not promised. The default remains
+`false`.
+
 ## Required env on compute nodes
 
 Set in `smoke_test.slurm`; documented here so torchrun-only users get them too.
