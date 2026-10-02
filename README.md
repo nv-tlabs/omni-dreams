@@ -1,10 +1,8 @@
-# NVIDIA Cosmos-Dreams (fka NVIDIA OmniDreams)
-
-Note to developers: NVIDIA Cosmos-Dreams was formerly named NVIDIA OmniDreams. OmniDreams was the research name for this model. It has been renamed Cosmos-Dreams to align with NVIDIA Cosmos family of world foundation models. The model weights, repository, and URL are unchanged. References to OmniDreams in the research blog, technical report, and model card refer to Cosmos-Dreams. 
+# NVIDIA OmniDreams
 
 **Resources:** [Research blog](https://research.nvidia.com/labs/sil/projects/omnidreams-blog/) | [Technical Report](https://arxiv.org/abs/2606.03159) | [Model weights](https://huggingface.co/nvidia/omni-dreams-models)
 
-NVIDIA Cosmos-Dreams is a world model that generates multi-camera photorealistic
+NVIDIA OmniDreams is a world model that generates multi-camera photorealistic
 video for autonomous-driving simulation in real time.
 
 The model consumes:
@@ -44,7 +42,7 @@ project.
 ## Community
 
 Join us on the NVIDIA Omniverse Discord to share your results, attend office
-hours, and take part in technical discussion with the NVIDIA Cosmos-Dreams team and
+hours, and take part in technical discussion with the NVIDIA OmniDreams team and
 community.
 
 If you are new, start with the
@@ -120,7 +118,7 @@ for multi-tenant clusters.
 
 # License and Attribution
 
-Cosmos-Dreams is licensed under the [Apache License, Version 2.0](LICENSE).
+OmniDreams is licensed under the [Apache License, Version 2.0](LICENSE).
 Third-party runtime dependencies are fetched by package managers or companion
 projects such as `flashdreams`.
 
