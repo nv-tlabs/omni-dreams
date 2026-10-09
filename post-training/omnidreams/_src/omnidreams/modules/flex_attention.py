@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
+import math
 from functools import lru_cache
 from typing import Callable, Optional
 
@@ -15,6 +16,8 @@ from torch.nn.attention.flex_attention import (
     create_block_mask,
     flex_attention,
 )
+
+from omnidreams._src.omnidreams.modules.ulysses_attention import UlyssesCPManager
 
 
 @lru_cache
@@ -109,7 +112,6 @@ def flex_attention_cp(
         cp_mask_mod = rewrite_mask_mod_for_cp(mask_mod, local_rank, shard_size)
         cp_block_mask = create_block_mask_cached(cp_mask_mod, B=1, H=1, M=shard_size, N=seq_len, device=device_type)
 
-
         cp_out = flex_attention_fn(
             q_local,
             k_full,
@@ -127,3 +129,46 @@ def flex_attention_cp(
         else:
             # If the input is a full tensor, return the full tensor
             return cp_out
+
+
+def ulysses_flex_attention(
+    query: Tensor,
+    key: Tensor,
+    value: Tensor,
+    *,
+    block_mask: BlockMask,
+    cp_manager: UlyssesCPManager,
+    flex_attention_fn: Callable = flex_attention,
+) -> Tensor:
+    """Run local FlexAttention on full-sequence Ulysses head shards.
+
+    Inputs and output use ``[B, S / CP, H, D]`` for CP>1. Ulysses changes
+    this temporarily to ``[B, S, H / CP, D]``; FlexAttention itself performs
+    no distributed communication in this execution mode.
+    """
+    if query.shape != key.shape or query.shape != value.shape:
+        raise ValueError(
+            f"Ulysses FlexAttention requires matching Q/K/V shapes, got {query.shape}, {key.shape}, and {value.shape}"
+        )
+    if query.ndim != 4:
+        raise ValueError(f"Ulysses FlexAttention expects [B, S, H, D], got {query.shape}")
+
+    cp_manager.validate_num_heads(query.shape[2])
+    full_query, full_key, full_value = cp_manager.sequence_to_head_qkv(query, key, value)
+    sequence_length = full_query.shape[1]
+    padded_length = math.ceil(sequence_length / 128) * 128 - sequence_length
+    if padded_length > 0:
+        pad_shape = [full_query.shape[0], padded_length, full_query.shape[2], full_query.shape[3]]
+        full_query = torch.cat([full_query, torch.zeros(pad_shape, device=query.device, dtype=query.dtype)], dim=1)
+        full_key = torch.cat([full_key, torch.zeros(pad_shape, device=key.device, dtype=key.dtype)], dim=1)
+        full_value = torch.cat([full_value, torch.zeros(pad_shape, device=value.device, dtype=value.dtype)], dim=1)
+
+    output = flex_attention_fn(
+        full_query.transpose(2, 1),
+        full_key.transpose(2, 1),
+        full_value.transpose(2, 1),
+        block_mask=block_mask,
+    ).transpose(2, 1)
+    if padded_length > 0:
+        output = output[:, :-padded_length]
+    return cp_manager.head_to_sequence(output)

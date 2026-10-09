@@ -15,13 +15,6 @@ from torchvision import transforms
 
 from omnidreams._src.imaginaire.utils import distributed, log
 from omnidreams._src.imaginaire.utils.context_parallel import cat_outputs_cp, cat_outputs_cp_with_grad, split_inputs_cp
-from omnidreams._src.predict2.conditioner import DataType
-from omnidreams._src.predict2.networks.minimal_v4_dit import Attention
-from omnidreams._src.predict2_multiview.networks.multiview_cross_dit import (
-    CrossViewAttention,
-    MultiCameraVideoRopePosition3DEmb,
-    MultiViewSACConfig,
-)
 from omnidreams._src.omnidreams.networks.causal_cosmos import (
     BlockMask,
     CausalCosmosBlock,
@@ -29,6 +22,13 @@ from omnidreams._src.omnidreams.networks.causal_cosmos import (
     VideoSize,
 )
 from omnidreams._src.omnidreams.utils.context_parallel import gather_l_split_v, gather_v_split_l
+from omnidreams._src.predict2.conditioner import DataType
+from omnidreams._src.predict2.networks.minimal_v4_dit import Attention
+from omnidreams._src.predict2_multiview.networks.multiview_cross_dit import (
+    CrossViewAttention,
+    MultiCameraVideoRopePosition3DEmb,
+    MultiViewSACConfig,
+)
 
 # Compile flex_attention for better performance
 # flex_attention_compiled = torch.compile(flex_attention, dynamic=False)
@@ -1381,6 +1381,16 @@ class CausalCrossViewCosmosDiT(CosmosCausalDiT):
         backend: str = "transformer_engine",
         **kwargs,
     ):
+        if kwargs.get("training_attention_backend", "flex") != "flex":
+            raise NotImplementedError(
+                "FlashAttention block-causal training backends are currently implemented only "
+                "for single-view models; cross-view blocks still use FlexAttention"
+            )
+        if kwargs.get("context_parallel_backend", "auto") == "ulysses":
+            raise NotImplementedError(
+                "Ulysses FlexAttention is currently implemented only for single-view models; "
+                "cross-view blocks must use legacy context parallelism"
+            )
         self.state_t = state_t
         self.n_cameras_emb = n_cameras_emb
         self.view_condition_dim = view_condition_dim

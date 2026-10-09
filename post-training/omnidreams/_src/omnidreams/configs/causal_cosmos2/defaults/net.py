@@ -46,6 +46,8 @@ COSMOS_V2_2B_NET_MININET: LazyDict = L(CosmosCausalDiT)(
     crossattn_proj_in_channels=100352,
     crossattn_emb_channels=1024,
     use_wan_fp32_strategy=True,
+    training_attention_backend="flex",
+    context_parallel_backend="auto",
 )
 
 COSMOS_V2_14B_NET_MININET = copy.deepcopy(COSMOS_V2_2B_NET_MININET)
@@ -83,6 +85,8 @@ COSMOS_V2_2B_NET_MININET_HDMAP: LazyDict = L(CosmosCausalHdmapDiT)(
     crossattn_proj_in_channels=100352,
     crossattn_emb_channels=1024,
     use_wan_fp32_strategy=True,
+    training_attention_backend="flex",
+    context_parallel_backend="auto",
 )
 
 ## teacher part

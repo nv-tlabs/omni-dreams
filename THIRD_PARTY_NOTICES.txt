@@ -187,6 +187,21 @@ Regenerate via:
 |---------|---------|---------|
 | `omni-dreams-post-training` | (workspace) | Apache-2.0 (this repo, post-training/) |
 
+### post-training [cu128] optional FlashAttention backends (4)
+
+| Package | Version | License |
+|---------|---------|---------|
+| `flash-attn-3-nv` | 1.0.1 (CUDA 12.8 / PyTorch 2.7 build) | BSD-3-Clause |
+| `flash-attn-4` | 4.0.0b26 (CUDA 12.8 / PyTorch 2.7-compatible release) | BSD-3-Clause |
+| `nvidia-cutlass-dsl` | 4.6.0.dev0 | Other/Proprietary License |
+| `nvidia-cutlass-dsl-libs-base` | 4.6.0.dev0 | Other/Proprietary License |
+
+### post-training [cu130] optional FlashAttention backend (1)
+
+| Package | Version | License |
+|---------|---------|---------|
+| `flash-attn-4[cu13]` | 4.0.0b31 (CUDA 13.0 / PyTorch 2.9 stack) | BSD-3-Clause |
+
 ### samples/post-training [dev] (3)
 
 | Package | Version | License |

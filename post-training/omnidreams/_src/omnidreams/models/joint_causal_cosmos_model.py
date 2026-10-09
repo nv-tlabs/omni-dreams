@@ -18,6 +18,11 @@ from omnidreams._src.imaginaire.utils.context_parallel import (
     broadcast,
     broadcast_split_tensor,
 )
+from omnidreams._src.omnidreams.modules.attention_backend import (
+    uses_ulysses_context_parallel,
+)
+from omnidreams._src.omnidreams.modules.ulysses_attention import UlyssesCPManager
+from omnidreams._src.omnidreams.utils.misc import sync_timer
 from omnidreams._src.predict2.conditioner import DataType
 from omnidreams._src.predict2.configs.video2world.defaults.conditioner import Video2WorldCondition
 from omnidreams._src.predict2.models.text2world_model_rectified_flow import (
@@ -28,7 +33,6 @@ from omnidreams._src.predict2.models.text2world_model_rectified_flow import (
 from omnidreams._src.predict2.schedulers.rectified_flow import RectifiedFlow
 from omnidreams._src.predict2.utils.dtensor_helper import DTensorFastEmaModelUpdater, broadcast_dtensor_model_states
 from omnidreams._src.predict2_multiview.models.multiview_vid2vid_model_rectified_flow import preprocess_databatch
-from omnidreams._src.omnidreams.utils.misc import sync_timer
 
 NUM_CONDITIONAL_FRAMES_KEY: str = "num_conditional_frames"
 
@@ -106,7 +110,9 @@ class CausalJointCosmosModelConfig(Text2WorldModelRectifiedFlowConfig):
     i2v_zero_latent_condition: bool = False  # Whether to use zero/black latent as I2V condition
     max_latent_frames_per_gpu: int = 21  # Maximum latent frames per GPU for KV cache sizing
     i2v_use_original_condition: bool = False  # Whether to use original condition for I2V
-    split_cp_in_model: bool = True  # Whether to split tensors in context parallelism (vs broadcast only)
+    # Legacy pre-network input sharding. Ulysses CP ignores this setting because
+    # its manager owns the post-patch token partition.
+    split_cp_in_model: bool = True
     # LoRA config alias for backward compatibility with downstream code (e.g. checkpointer/dcp.py)
     lora_config: I4LoraConfig = I4LoraConfig()
     # I2V configs
@@ -177,6 +183,19 @@ class CausalJointCosmosModel(Text2WorldModelRectifiedFlow):
             self.net.freeze_parameters_camera_cond()
             self._param_count = count_params(self.net, verbose=False)
 
+    @property
+    def split_cp_model_inputs(self) -> bool:
+        """Whether CP shards raw model inputs before entering the network."""
+        training_attention_backend = getattr(self.net, "training_attention_backend", "flex")
+        context_parallel_backend = getattr(self.net, "context_parallel_backend", "auto")
+        if uses_ulysses_context_parallel(
+            training_attention_backend,
+            context_parallel_backend,
+            cp_size=2,
+        ):
+            return False
+        return self.config.split_cp_in_model
+
     def get_data_and_condition(
         self, data_batch: dict[str, torch.Tensor]
     ) -> Tuple[torch.Tensor, torch.Tensor, Video2WorldCondition]:
@@ -222,31 +241,46 @@ class CausalJointCosmosModel(Text2WorldModelRectifiedFlow):
     def broadcast_split_for_model_parallelsim(self, x0_B_C_T_H_W, condition, epsilon_B_C_T_H_W, sigma_B_T):
         """
         Broadcast and split the input data and condition for model parallelism.
-        Supports split_cp_in_model toggle: when False, only broadcasts without splitting.
+
+        Ulysses CP keeps inputs replicated and performs the only sequence
+        partition after patching. Legacy CP retains split_cp_in_model behavior.
         """
         cp_group = self.get_context_parallel_group()
         cp_size = 1 if cp_group is None else cp_group.size()
         if condition.is_video and cp_size > 1:
-            if x0_B_C_T_H_W is not None:
-                if self.config.split_cp_in_model:
-                    x0_B_C_T_H_W = broadcast_split_tensor(x0_B_C_T_H_W, seq_dim=2, process_group=cp_group)
-                else:
-                    x0_B_C_T_H_W = broadcast(x0_B_C_T_H_W, cp_group)
-            if epsilon_B_C_T_H_W is not None:
-                if self.config.split_cp_in_model:
-                    epsilon_B_C_T_H_W = broadcast_split_tensor(epsilon_B_C_T_H_W, seq_dim=2, process_group=cp_group)
-                else:
-                    epsilon_B_C_T_H_W = broadcast(epsilon_B_C_T_H_W, cp_group)
-            if sigma_B_T is not None:
-                assert sigma_B_T.ndim == 2, "sigma_B_T should be 2D tensor"
-                if (
-                    sigma_B_T.shape[-1] == 1 or not self.config.split_cp_in_model
-                ):  # single sigma is shared across all frames
-                    sigma_B_T = broadcast(sigma_B_T, cp_group)
-                else:  # different sigma for each frame
-                    sigma_B_T = broadcast_split_tensor(sigma_B_T, seq_dim=1, process_group=cp_group)
-            if condition is not None:
-                condition = condition.broadcast(cp_group, split=self.config.split_cp_in_model)
+            training_attention_backend = getattr(self.net, "training_attention_backend", "flex")
+            context_parallel_backend = getattr(self.net, "context_parallel_backend", "auto")
+            if uses_ulysses_context_parallel(
+                training_attention_backend,
+                context_parallel_backend,
+                cp_size=cp_size,
+            ):
+                cp_manager = UlyssesCPManager(cp_group)
+                x0_B_C_T_H_W, condition, epsilon_B_C_T_H_W, sigma_B_T = cp_manager.prepare_model_inputs(
+                    x0_B_C_T_H_W,
+                    condition,
+                    epsilon_B_C_T_H_W,
+                    sigma_B_T,
+                )
+            else:
+                if x0_B_C_T_H_W is not None:
+                    if self.split_cp_model_inputs:
+                        x0_B_C_T_H_W = broadcast_split_tensor(x0_B_C_T_H_W, seq_dim=2, process_group=cp_group)
+                    else:
+                        x0_B_C_T_H_W = broadcast(x0_B_C_T_H_W, cp_group)
+                if epsilon_B_C_T_H_W is not None:
+                    if self.split_cp_model_inputs:
+                        epsilon_B_C_T_H_W = broadcast_split_tensor(epsilon_B_C_T_H_W, seq_dim=2, process_group=cp_group)
+                    else:
+                        epsilon_B_C_T_H_W = broadcast(epsilon_B_C_T_H_W, cp_group)
+                if sigma_B_T is not None:
+                    assert sigma_B_T.ndim == 2, "sigma_B_T should be 2D tensor"
+                    if sigma_B_T.shape[-1] == 1 or not self.split_cp_model_inputs:
+                        sigma_B_T = broadcast(sigma_B_T, cp_group)
+                    else:
+                        sigma_B_T = broadcast_split_tensor(sigma_B_T, seq_dim=1, process_group=cp_group)
+                if condition is not None:
+                    condition = condition.broadcast(cp_group, split=self.split_cp_model_inputs)
             self.net.enable_context_parallel(cp_group)
         else:
             self.net.disable_context_parallel()
@@ -347,8 +381,8 @@ class CausalJointCosmosModel(Text2WorldModelRectifiedFlow):
             x0_B_C_T_H_W, condition, epsilon_B_C_T_H_W, t_B_1 = self.broadcast_split_for_model_parallelsim(
                 x0_B_C_T_H_W, condition, epsilon_B_C_T_H_W, t_B_1
             )
-            # when split_cp_in_model is False, we should get the same shape as before broadcast
-            if not self.config.split_cp_in_model:
+            # Replicated-input CP preserves the pre-broadcast temporal shape.
+            if not self.split_cp_model_inputs:
                 assert x0_B_C_T_H_W.shape[2] == num_frames, "x0_B_C_T_H_W shape should be the same as before broadcast"
             timesteps = self.rectified_flow.get_discrete_timestamp(t_B_1, self.flow_matching_kwargs)
             sigmas = self.rectified_flow.get_sigmas(
@@ -372,8 +406,8 @@ class CausalJointCosmosModel(Text2WorldModelRectifiedFlow):
             x0_B_C_T_H_W, condition, epsilon_B_C_T_H_W, t_B_T = self.broadcast_split_for_model_parallelsim(
                 x0_B_C_T_H_W, condition, epsilon_B_C_T_H_W, t_B_T
             )
-            # when split_cp_in_model is False, we should get the same shape as before broadcast
-            if not self.config.split_cp_in_model:
+            # Replicated-input CP preserves the pre-broadcast temporal shape.
+            if not self.split_cp_model_inputs:
                 assert x0_B_C_T_H_W.shape[2] == num_frames, "x0_B_C_T_H_W shape should be the same as before broadcast"
                 assert t_B_T.shape[1] == num_frames, "t_B_T shape should be the same as before broadcast"
             timesteps_B_T = self.rectified_flow.get_discrete_timestamp(t_B_T, self.flow_matching_kwargs)

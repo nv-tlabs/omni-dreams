@@ -40,8 +40,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cu128 = ["cosmos-oss[cu128_torch27]"]
-cu130 = ["cosmos-oss[cu130_torch29]"]
+cu128 = [
+  "cosmos-oss[cu128_torch27]",
+  "flash-attn-3-nv==1.0.1; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  # b27+ pulls a Quack runtime that uses Torch dtypes introduced after 2.7.
+  "flash-attn-4==4.0.0b26; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  # Direct dev-version pins let uv resolve b26's matching CuTe DSL runtime
+  # without enabling unrelated pre-release packages globally.
+  "nvidia-cutlass-dsl==4.6.0.dev0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "nvidia-cutlass-dsl-libs-base==4.6.0.dev0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+cu130 = [
+  "cosmos-oss[cu130_torch29]",
+  "flash-attn-4[cu13]==4.0.0b31; sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
 
 [dependency-groups]
 dev = ["cosmos-oss[dev]"]
@@ -82,6 +94,14 @@ members = ["packages/*", "../samples/post-training"]
 
 [tool.uv.sources]
 cosmos-oss = [{ workspace = true }]
+flash-attn-3-nv = [
+  { index = "cosmos-cu128-torch27-fa3", extra = "cu128", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
+]
+
+[[tool.uv.index]]
+name = "cosmos-cu128-torch27-fa3"
+url = "https://nvidia-cosmos.github.io/cosmos-dependencies/v1.2.0/cu128_torch27/simple"
+explicit = true
 
 [tool.hatch.version]
 path = "omnidreams/__about__.py"

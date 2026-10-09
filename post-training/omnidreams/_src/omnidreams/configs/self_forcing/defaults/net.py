@@ -207,6 +207,8 @@ CAUSAL_COSMOS_V2_2B_NET_MININET: LazyDict = L(CosmosCausalDiT)(
     use_wan_fp32_strategy=True,
     postpone_checkpoint=True,
     on_the_fly_checkpoint=True,
+    training_attention_backend="flex",
+    context_parallel_backend="auto",
 )
 
 CAUSAL_COSMOS_V2_2B_NET_MININET_HDMAP: LazyDict = L(CosmosCausalHdmapDiT)(
@@ -243,6 +245,8 @@ CAUSAL_COSMOS_V2_2B_NET_MININET_HDMAP: LazyDict = L(CosmosCausalHdmapDiT)(
     use_wan_fp32_strategy=True,
     additional_concat_ch=16,
     additional_init_method="random_init",
+    training_attention_backend="flex",
+    context_parallel_backend="auto",
     postpone_checkpoint=True,
     on_the_fly_checkpoint=True,
 )

@@ -137,6 +137,41 @@ commented placeholders for `--account` and `--partition`. Either pass them
 on the `sbatch` command line, or uncomment and edit the `##SBATCH` lines at
 the top of the file.
 
+### Optional FlashAttention-3/4 and Ulysses CP backends
+
+The CUDA extras install their compatible FlashAttention packages with the rest
+of the release environment. CUDA 12.8 includes FA3-NV and a PyTorch 2.7-compatible
+FA4 release; CUDA 13.0 includes the current FA4 CUDA 13 release:
+
+```bash
+uv sync --project post-training --extra cu128
+# Or, for the CUDA 13.0 / PyTorch 2.9 stack:
+uv sync --project post-training --extra cu130
+```
+
+Set `model.config.net.training_attention_backend=flash_attn_3` or
+`model.config.net.training_attention_backend=flash_attn_4` to select a backend.
+Attention-kernel and context-parallel selection are separate. Set
+`model.config.net.context_parallel_backend=auto|legacy|ulysses`; `auto` maps
+FlexAttention to legacy CP and FA3/FA4 to Ulysses CP. Explicit `flex + ulysses`
+is also supported. FA3/FA4 with legacy CP is rejected because local sequence
+shards would be missing remote K/V prefixes.
+
+CP=1 performs no CP communication. With CP>1, Ulysses transforms rank-local
+sequence shards from `[B, S/CP, H, D]` to balanced full-sequence head shards
+`[B, S, H/CP, D]`, then restores the local sequence layout after attention.
+Its manager keeps pre-network inputs replicated and owns the single post-patch
+sequence partition, regardless of the legacy `model.config.split_cp_in_model`
+setting. `num_heads` must be divisible by the CP size.
+
+The FA3/FA4 paths support BF16/FP16 single-view, non-interleaved causal training
+with `patch_temporal=1`; FlexAttention retains its existing shape support with
+either CP strategy. FA3-NV is available only in the x86_64 CUDA 12.8 extra and
+requires Hopper (SM90). FA4 is an upstream alpha release for Hopper and
+Blackwell; it uses CuTe DSL JIT compilation on the first call. The default
+remains `flex`, and this integration deliberately uses dense block-prefix calls
+rather than FA4's experimental block-sparse API.
+
 ## Required env on compute nodes
 
 Set in `smoke_test.slurm`; documented here so torchrun-only users get them too.

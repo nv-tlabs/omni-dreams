@@ -171,8 +171,12 @@ class ValLossComputation(Callback):
             x0_B_C_T_H_W, condition, epsilon_B_C_T_H_W, t_B_T
         )
 
-        split_cp_in_model = getattr(model.config, "split_cp_in_model", False)
-        if not split_cp_in_model:
+        split_cp_model_inputs = getattr(
+            model,
+            "split_cp_model_inputs",
+            getattr(model.config, "split_cp_in_model", False),
+        )
+        if not split_cp_model_inputs:
             assert x0_loss.shape[2] == num_frames
             num_frames_loss = num_frames
         else:

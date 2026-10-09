@@ -15,13 +15,14 @@ from torchvision import transforms
 
 from omnidreams._src.imaginaire.utils import distributed
 from omnidreams._src.imaginaire.utils.context_parallel import cat_outputs_cp, cat_outputs_cp_with_grad
-from omnidreams._src.predict2.conditioner import DataType
-from omnidreams._src.predict2.networks.minimal_v4_dit import PatchEmbed
+from omnidreams._src.omnidreams.modules.attention_backend import FLASH_ATTENTION_BACKENDS
 from omnidreams._src.omnidreams.networks.causal_cosmos import (
     DEBUG,
     CosmosCausalDiT,
     VideoSize,
 )
+from omnidreams._src.predict2.conditioner import DataType
+from omnidreams._src.predict2.networks.minimal_v4_dit import PatchEmbed
 
 
 class CosmosCausalHdmapDiT(CosmosCausalDiT):
@@ -141,6 +142,10 @@ class CosmosCausalHdmapDiT(CosmosCausalDiT):
                 control_input_hdmap_bbox=control_input_hdmap_bbox,
             )
         else:
+            if self.training_attention_backend in FLASH_ATTENTION_BACKENDS and num_interleave != 0:
+                raise NotImplementedError(
+                    "The block-causal FlashAttention training backends do not support num_interleave > 0"
+                )
             return self._forward_train(
                 x_B_C_T_H_W=x_B_C_T_H_W,
                 timesteps_B_T=timesteps_B_T,
@@ -175,21 +180,39 @@ class CosmosCausalHdmapDiT(CosmosCausalDiT):
         cp_size = 1
         if self._is_context_parallel_enabled and self.cp_group is not None:
             cp_size = self.cp_group.size()
+        resolved_cp_backend = self.get_context_parallel_backend(cp_size)
+        mask_cp_size = cp_size if resolved_cp_backend == "legacy" else 1
+        if resolved_cp_backend == "ulysses":
+            self.ulysses_cp_manager.validate_num_heads(self.num_heads)
 
-        mask_key = f"mask_f{num_frames}_seqlen{frame_seqlen}_block{self.num_frame_per_block}_cp{cp_size}"
+        mask_key = (
+            f"mask_f{num_frames}_seqlen{frame_seqlen}_block{self.num_frame_per_block}"
+            f"_interleave{num_interleave}_cpbackend{resolved_cp_backend}_cp{mask_cp_size}"
+        )
 
-        if mask_key not in self.block_mask_dict:
-            block_mask = self._prepare_blockwise_causal_attn_mask(
-                device=device,
-                num_frames=num_frames // (num_interleave + 1),
-                frame_seqlen=frame_seqlen,
-                num_frame_per_block=self.num_frame_per_block,
-                num_interleave=num_interleave,
-                cp_size=cp_size,
-            )
-            self.block_mask_dict[mask_key] = block_mask
+        if self.training_attention_backend in FLASH_ATTENTION_BACKENDS:
+            if num_interleave != 0:
+                raise NotImplementedError(
+                    "The block-causal FlashAttention training backends do not support num_interleave > 0"
+                )
+            if self.patch_temporal != 1:
+                raise NotImplementedError(
+                    "The block-causal FlashAttention training backends currently require patch_temporal=1"
+                )
+            block_mask = None
         else:
-            block_mask = self.block_mask_dict[mask_key]
+            if mask_key not in self.block_mask_dict:
+                block_mask = self._prepare_blockwise_causal_attn_mask(
+                    device=device,
+                    num_frames=num_frames // (num_interleave + 1),
+                    frame_seqlen=frame_seqlen,
+                    num_frame_per_block=self.num_frame_per_block,
+                    num_interleave=num_interleave,
+                    cp_size=mask_cp_size,
+                )
+                self.block_mask_dict[mask_key] = block_mask
+            else:
+                block_mask = self.block_mask_dict[mask_key]
 
         # Prepare inputs
         if self.concat_padding_mask and padding_mask is not None:
@@ -263,17 +286,29 @@ class CosmosCausalHdmapDiT(CosmosCausalDiT):
         # Context parallel: split inputs
         cp_enabled = self._is_context_parallel_enabled and self.cp_group is not None
         if cp_enabled and self.cp_group.size() > 1:
-            from omnidreams._src.imaginaire.utils.context_parallel import split_inputs_cp
+            if resolved_cp_backend == "ulysses":
+                split_sequence = self.ulysses_cp_manager.split_sequence
+                x_B_L_D = split_sequence(x_B_L_D, dim=1)
+                t_emb_B_L_D = split_sequence(t_emb_B_L_D, dim=1)
+                rope_freq = split_sequence(rope_freq, dim=0)
 
-            x_B_L_D = split_inputs_cp(x_B_L_D, seq_dim=1, cp_group=self.cp_group)
-            t_emb_B_L_D = split_inputs_cp(t_emb_B_L_D, seq_dim=1, cp_group=self.cp_group)
-            rope_freq = split_inputs_cp(rope_freq, seq_dim=0, cp_group=self.cp_group)
+                if adaln_lora_B_L_3D is not None:
+                    adaln_lora_B_L_3D = split_sequence(adaln_lora_B_L_3D, dim=1)
 
-            if adaln_lora_B_L_3D is not None:
-                adaln_lora_B_L_3D = split_inputs_cp(adaln_lora_B_L_3D, seq_dim=1, cp_group=self.cp_group)
+                if extra_pos_emb is not None:
+                    extra_pos_emb = split_sequence(extra_pos_emb, dim=1)
+            else:
+                from omnidreams._src.imaginaire.utils.context_parallel import split_inputs_cp
 
-            if extra_pos_emb is not None:
-                extra_pos_emb = split_inputs_cp(extra_pos_emb, seq_dim=1, cp_group=self.cp_group)
+                x_B_L_D = split_inputs_cp(x_B_L_D, seq_dim=1, cp_group=self.cp_group)
+                t_emb_B_L_D = split_inputs_cp(t_emb_B_L_D, seq_dim=1, cp_group=self.cp_group)
+                rope_freq = split_inputs_cp(rope_freq, seq_dim=0, cp_group=self.cp_group)
+
+                if adaln_lora_B_L_3D is not None:
+                    adaln_lora_B_L_3D = split_inputs_cp(adaln_lora_B_L_3D, seq_dim=1, cp_group=self.cp_group)
+
+                if extra_pos_emb is not None:
+                    extra_pos_emb = split_inputs_cp(extra_pos_emb, seq_dim=1, cp_group=self.cp_group)
 
             if distributed.get_rank() == 0 and DEBUG:
                 print(f"CP split shapes (train): x={x_B_L_D.shape}, t_emb={t_emb_B_L_D.shape}, rope={rope_freq.shape}")
@@ -324,7 +359,10 @@ class CosmosCausalHdmapDiT(CosmosCausalDiT):
         # Context parallel: gather outputs
         if cp_enabled and self.cp_group is not None:
             # Gather before FinalLayer
-            x_B_L_D = cat_outputs_cp_with_grad(x_B_L_D, seq_dim=1, cp_group=self.cp_group)
+            if resolved_cp_backend == "ulysses":
+                x_B_L_D = self.ulysses_cp_manager.gather_sequence_with_grad(x_B_L_D, dim=1)
+            else:
+                x_B_L_D = cat_outputs_cp_with_grad(x_B_L_D, seq_dim=1, cp_group=self.cp_group)
 
         # Unflatten for FinalLayer
         x_B_T_H_W_D = rearrange(x_B_L_D, "b (t h w) d -> b t h w d", t=video_size.T, h=video_size.H, w=video_size.W)

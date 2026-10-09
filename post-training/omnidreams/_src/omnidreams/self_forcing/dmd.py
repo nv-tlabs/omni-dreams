@@ -27,14 +27,17 @@ from omnidreams._src.imaginaire.utils.count_params import count_params
 from omnidreams._src.imaginaire.utils.ema import FastEmaModelUpdater
 from omnidreams._src.imaginaire.utils.fsdp_helper import hsdp_device_mesh
 from omnidreams._src.imaginaire.utils.optim_instantiate import get_base_scheduler
-from omnidreams._src.predict2.models.text2world_model import EMAConfig
-from omnidreams._src.predict2.text_encoders.text_encoder import TextEncoder, TextEncoderConfig
-
+from omnidreams._src.omnidreams.modules.attention_backend import (
+    uses_ulysses_context_parallel,
+)
+from omnidreams._src.omnidreams.modules.ulysses_attention import UlyssesCPManager
 from omnidreams._src.omnidreams.self_forcing.utils import (
     build_net,
     load_consolidated_pt_to_net,
     load_internal_dcp_checkpoint_to_net,
 )
+from omnidreams._src.predict2.models.text2world_model import EMAConfig
+from omnidreams._src.predict2.text_encoders.text_encoder import TextEncoder, TextEncoderConfig
 
 
 def _load_net_init_ckpt(net, ckpt_path: str, *, role: str, credential_path: str) -> None:
@@ -68,9 +71,9 @@ def _load_net_init_ckpt(net, ckpt_path: str, *, role: str, credential_path: str)
         load_internal_dcp_checkpoint_to_net(net, ckpt_path, credential_path=credential_path)
 
 
+from omnidreams._src.omnidreams.utils.torch_future import clip_grad_norm_
 from omnidreams._src.predict2.configs.common.defaults.optimizer import AdamWConfig
 from omnidreams._src.predict2.utils.dtensor_helper import DTensorFastEmaModelUpdater
-from omnidreams._src.omnidreams.utils.torch_future import clip_grad_norm_
 
 IS_PREPROCESSED_KEY = "is_preprocessed"
 _DEFAULT_NEGATIVE_PROMPT = "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. Overall, the video is of poor quality."
@@ -362,7 +365,6 @@ class ImaginaireDMDBaseModel(ImaginaireModel):
         """
         if not self.is_student_phase(iteration):
             return
-
 
         if self.config.ema.enabled:
             # calculate beta for EMA update
@@ -669,7 +671,6 @@ class ImaginaireDMDBaseModel(ImaginaireModel):
             timestep=timestep.flatten(0, 1),
         ).unflatten(0, flow_pred.shape[:2])
 
-
         if self.config.denoise_replace_gt_frames:
             gt_frames_x0 = conditional_dict["gt_frames"].type_as(pred_x0)
             pred_x0 = (
@@ -799,25 +800,40 @@ class ImaginaireDMDBaseModel(ImaginaireModel):
     def broadcast_split_for_model_parallelsim(self, x0_B_C_T_H_W, condition, epsilon_B_C_T_H_W, sigma_B_T, split=False):
         """
         Broadcast and split the input data and condition for model parallelism.
-        Currently, we only support context parallelism.
+
+        Ulysses CP keeps inputs replicated and performs the only token split
+        after patch embedding. Legacy CP retains its pre-network temporal split.
         """
         cp_group = self.get_context_parallel_group()
         cp_size = 1 if cp_group is None else cp_group.size()
         if condition.is_video and cp_size > 1:
-            x0_B_C_T_H_W = broadcast_split_tensor(x0_B_C_T_H_W, seq_dim=2, process_group=cp_group)
-            epsilon_B_C_T_H_W = broadcast_split_tensor(epsilon_B_C_T_H_W, seq_dim=2, process_group=cp_group)
-            if sigma_B_T is not None:
-                assert sigma_B_T.ndim == 2, "sigma_B_T should be 2D tensor"
-                if sigma_B_T.shape[-1] == 1:  # single sigma is shared across all frames
-                    sigma_B_T = broadcast(sigma_B_T, cp_group)
-                else:  # different sigma for each frame
-                    sigma_B_T = broadcast_split_tensor(sigma_B_T, seq_dim=1, process_group=cp_group)
-            if condition is not None:
-                condition = condition.broadcast(cp_group, split=split)
+            training_attention_backend = getattr(self.net, "training_attention_backend", "flex")
+            context_parallel_backend = getattr(self.net, "context_parallel_backend", "auto")
+            if uses_ulysses_context_parallel(
+                training_attention_backend,
+                context_parallel_backend,
+                cp_size=cp_size,
+            ):
+                cp_manager = UlyssesCPManager(cp_group)
+                x0_B_C_T_H_W, condition, epsilon_B_C_T_H_W, sigma_B_T = cp_manager.prepare_model_inputs(
+                    x0_B_C_T_H_W,
+                    condition,
+                    epsilon_B_C_T_H_W,
+                    sigma_B_T,
+                )
+            else:
+                x0_B_C_T_H_W = broadcast_split_tensor(x0_B_C_T_H_W, seq_dim=2, process_group=cp_group)
+                epsilon_B_C_T_H_W = broadcast_split_tensor(epsilon_B_C_T_H_W, seq_dim=2, process_group=cp_group)
+                if sigma_B_T is not None:
+                    assert sigma_B_T.ndim == 2, "sigma_B_T should be 2D tensor"
+                    if sigma_B_T.shape[-1] == 1:  # single sigma is shared across all frames
+                        sigma_B_T = broadcast(sigma_B_T, cp_group)
+                    else:  # different sigma for each frame
+                        sigma_B_T = broadcast_split_tensor(sigma_B_T, seq_dim=1, process_group=cp_group)
+                if condition is not None:
+                    condition = condition.broadcast(cp_group, split=split)
             self.net.enable_context_parallel(cp_group)
         else:
             self.net.disable_context_parallel()
 
         return x0_B_C_T_H_W, condition, epsilon_B_C_T_H_W, sigma_B_T
-
-
