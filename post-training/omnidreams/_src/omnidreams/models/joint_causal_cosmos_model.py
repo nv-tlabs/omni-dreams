@@ -156,7 +156,10 @@ class CausalJointCosmosModel(Text2WorldModelRectifiedFlow):
         self.kv_cache1 = None
         self.kv_cache2 = None
         self.num_frame_per_block = getattr(config, "num_frame_per_block", 1)
-        self.net.num_frame_per_block = self.num_frame_per_block
+        # With use_lora, self.net is a peft PeftModel, which forwards attribute reads to the wrapped net but not
+        # writes; the wrapped net builds its block-causal attention mask from its own num_frame_per_block.
+        net = self.net.get_base_model() if config.use_lora else self.net
+        net.num_frame_per_block = self.num_frame_per_block
         self.history_noise = getattr(config, "history_noise", 0)
         self.force_teacher_t0 = getattr(config, "force_teacher_t0", False)
         if self.history_noise > 0:

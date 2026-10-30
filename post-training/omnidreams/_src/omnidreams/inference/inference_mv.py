@@ -355,7 +355,12 @@ class I2VInference:
                     self.config.model.config.num_frame_per_block = chunk_duration
                     self.model.num_frame_per_block = chunk_duration
                     self.model.config.num_frame_per_block = chunk_duration
-                    self.model.net.num_frame_per_block = chunk_duration
+                    # With use_lora, self.model.net is a peft PeftModel, which forwards attribute reads to the wrapped
+                    # net but not writes; the wrapped net builds its block-causal attention mask from its own value.
+                    net = self.model.net
+                    if getattr(self.model.config, "use_lora", False):
+                        net = net.get_base_model()
+                    net.num_frame_per_block = chunk_duration
                 else:
                     log.warning(
                         "chunk_duration specified but config.model.config.num_frame_per_block does not exist",
