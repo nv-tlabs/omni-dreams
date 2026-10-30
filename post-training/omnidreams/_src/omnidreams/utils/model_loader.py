@@ -220,12 +220,13 @@ def load_model_state_dict_from_checkpoint(
             log.info(f"Loading model cached locally from {local_s3_ckpt_fp}")
             local_state_dict = easy_io.load(local_s3_ckpt_fp, weights_only=INTERNAL)
 
-            # Handle LoRA key mapping if the model uses LoRA and checkpoint is in .pt format
+            # Handle LoRA key mapping if the model uses LoRA and checkpoint is in .pt format. Check the resolved
+            # path: a registered URI such as ".../model" resolves to a local consolidated ".pt" file.
             if (
                 hasattr(model, "config")
                 and hasattr(model.config, "use_lora")
                 and model.config.use_lora
-                and checkpoint_format == "pt"
+                and str(local_s3_ckpt_fp).endswith(".pt")
             ):
                 log.info("Model uses LoRA, mapping checkpoint keys to model keys with base_layer...")
                 mapped_state_dict = {}
@@ -254,6 +255,8 @@ def load_model_state_dict_from_checkpoint(
                     log.info(f"Mapped {len(mapped_keys)} LoRA keys from checkpoint to model (showing first 5):")
                     for mapped_key in mapped_keys[:5]:
                         log.info(f"  {mapped_key}")
+                # A base checkpoint has no LoRA adapter tensors: the adapters keep their initialization.
+                missing_keys = [k for k in missing_keys if "lora_" not in k]
                 if missing_keys:
                     log.warning(f"Missing keys in checkpoint: {missing_keys[:10]}... (showing first 10)")
 

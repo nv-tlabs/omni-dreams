@@ -902,10 +902,16 @@ class Text2WorldModelRectifiedFlow(ImaginaireModel):
             )
         else:
             log.critical("load model in non-strict mode")
-            log.critical(non_strict_load_model(self.net, _reg_state_dict), rank0_only=False)
+            reg_results = non_strict_load_model(self.net, _reg_state_dict)
+            log.critical(reg_results, rank0_only=False)
+            missing_keys, unexpected_keys = list(reg_results.missing_keys), list(reg_results.unexpected_keys)
             if self.config.ema.enabled:
                 log.critical("load ema model in non-strict mode")
-                log.critical(non_strict_load_model(self.net_ema, _ema_state_dict), rank0_only=False)
+                ema_results = non_strict_load_model(self.net_ema, _ema_state_dict)
+                log.critical(ema_results, rank0_only=False)
+                missing_keys += ema_results.missing_keys
+                unexpected_keys += ema_results.unexpected_keys
+            return _IncompatibleKeys(missing_keys=missing_keys, unexpected_keys=unexpected_keys)
 
     # ------------------ public methods ------------------
     def ema_beta(self, iteration: int) -> float:

@@ -216,12 +216,13 @@ def load_model_state_dict_from_checkpoint(
             log.info(f"Loading model cached locally from {local_s3_ckpt_fp}")
             local_state_dict = easy_io.load(local_s3_ckpt_fp, weights_only=INTERNAL)
 
-            # Handle LoRA key mapping if the model uses LoRA and checkpoint is in .pt format
+            # Handle LoRA key mapping if the model uses LoRA and checkpoint is in .pt format. Check the resolved
+            # path: a registered URI such as ".../model" resolves to a local consolidated ".pt" file.
             if (
                 hasattr(model, "config")
                 and hasattr(model.config, "use_lora")
                 and model.config.use_lora
-                and checkpoint_format == "pt"
+                and str(local_s3_ckpt_fp).endswith(".pt")
             ):
                 log.info("Model uses LoRA, mapping checkpoint keys to model keys with base_layer...")
                 mapped_state_dict = {}
@@ -250,6 +251,8 @@ def load_model_state_dict_from_checkpoint(
                     log.info(f"Mapped {len(mapped_keys)} LoRA keys from checkpoint to model (showing first 5):")
                     for mapped_key in mapped_keys[:5]:
                         log.info(f"  {mapped_key}")
+                # A base checkpoint has no LoRA adapter tensors: the adapters keep their initialization.
+                missing_keys = [k for k in missing_keys if "lora_" not in k]
                 if missing_keys:
                     log.warning(f"Missing keys in checkpoint: {missing_keys[:10]}... (showing first 10)")
 
@@ -257,13 +260,29 @@ def load_model_state_dict_from_checkpoint(
 
             # `strict=False` is needed to avoid errors: `Skipping key ... introduced by TransformerEngine for FP8 in the checkpoint.`
             load_info = model.load_state_dict(local_state_dict, strict=False)
-            log.info(f"Checkpoint weights loaded from {local_s3_ckpt_fp}: {load_info}")
             if load_info is None:
-                log.info("Checkpoint weights loaded successfully (strict=True).")
-            elif not load_info.missing_keys and not load_info.unexpected_keys:
-                log.info("Checkpoint weights loaded successfully (all keys matched).")
+                log.warning(
+                    f"Checkpoint weights loaded from {local_s3_ckpt_fp}; {type(model).__name__}.load_state_dict "
+                    "returned no missing/unexpected key report."
+                )
             else:
-                log.warning("Checkpoint weights loaded; review missing_keys/unexpected_keys above.")
+                missing_keys = list(load_info.missing_keys)
+                unexpected_keys = list(load_info.unexpected_keys)
+                if getattr(getattr(model, "config", None), "use_lora", False):
+                    # A base checkpoint has no adapter weights: the LoRA adapters keep their initialization.
+                    num_adapter_keys = len([k for k in missing_keys if "lora_" in k])
+                    missing_keys = [k for k in missing_keys if "lora_" not in k]
+                    log.info(
+                        f"{num_adapter_keys} LoRA adapter tensors not in the checkpoint keep their initialization."
+                    )
+                if missing_keys or unexpected_keys:
+                    log.warning(
+                        f"Checkpoint weights loaded from {local_s3_ckpt_fp} with {len(missing_keys)} missing keys "
+                        f"{missing_keys[:10]} and {len(unexpected_keys)} unexpected keys {unexpected_keys[:10]} "
+                        "(showing first 10)."
+                    )
+                else:
+                    log.info(f"Checkpoint weights loaded from {local_s3_ckpt_fp} (all keys matched).")
 
         # Synchronize model states from rank 0 to all other ranks
         # Skip EMA parameters and buffers to avoid OOM - they are on CPU now, and will be moved to CUDA and synced via copy from main model after FSDP
