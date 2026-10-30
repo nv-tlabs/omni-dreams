@@ -82,6 +82,14 @@ class ImaginaireDMDBaseModelConfig:
 
     net: LazyDict | None = None
     net_ckpt: str = ""
+    # LoRA on the generator (`net`), with the options of Text2WorldModelRectifiedFlowConfig. The adapters are injected
+    # in place (an adapted Linear's weight is `<m>.base_layer.weight` in the generator's state dict; checkpoints store
+    # it as `<m>.weight`, as for `use_lora` in the other stages); `net_ckpt` is loaded into the base weights and the
+    # adapters start at B = 0. The real score (frozen) and the fake score (trained in full) are unchanged.
+    use_lora: bool = False
+    lora_rank: int = 32
+    lora_alpha: int = 32
+    lora_target_modules: str = "q_proj,k_proj,v_proj,output_proj,mlp.layer1,mlp.layer2"
 
     net_real_score: LazyDict | None = None
     net_real_score_ckpt: str = ""
@@ -205,12 +213,29 @@ class ImaginaireDMDBaseModel(ImaginaireModel):
                 "conditioner should not have learnable parameters"
             )
 
+            lora_config = None
+            if config.use_lora:
+                from peft import LoraConfig
+
+                assert not config.ema.enabled, "use_lora does not support ema.enabled (the EMA net has no adapters)"
+                lora_config = LoraConfig(
+                    r=config.lora_rank,
+                    lora_alpha=config.lora_alpha,
+                    target_modules=[module.strip() for module in config.lora_target_modules.split(",")],
+                )
             self.net = build_net(
                 config.net,
                 self.fsdp_device_mesh,
                 self.mixed_precision_policy_root_module,
                 self.mixed_precision_policy_internal_layers,
+                lora_config=lora_config,
             )
+            if lora_config is not None:
+                trainable = {name: param.numel() for name, param in self.net.named_parameters() if param.requires_grad}
+                assert trainable and all("lora_" in name for name in trainable), "only LoRA adapters may be trainable"
+                log.info(
+                    f"LoRA on the generator: {sum(trainable.values()):,} trainable parameters in {len(trainable)} tensors"
+                )
             if config.net_ckpt != "":
                 _load_net_init_ckpt(
                     self.net,

@@ -21,12 +21,47 @@ from omnidreams._src.omnidreams.checkpointer.dcp import get_storage_reader
 from omnidreams._src.omnidreams.utils.misc import sync_timer
 
 
+def add_lora_adapters(net: torch.nn.Module, lora_config) -> torch.nn.Module:
+    """Inject the LoRA adapters of a peft `LoraConfig` into `net` in place and make them its only trainable parameters.
+
+    An adapted Linear `<m>` keeps its weight as `<m>.base_layer.weight`. Works on the meta device; the adapters are
+    then initialized by `init_lora_adapters` once the net is materialized.
+    """
+    from peft import inject_adapter_in_model
+
+    net = inject_adapter_in_model(lora_config, net)
+    for name, param in net.named_parameters():
+        param.requires_grad_("lora_" in name)
+    return net
+
+
+def init_lora_adapters(net: torch.nn.Module) -> int:
+    """Initialize the LoRA adapters of a materialized net as peft does (A Kaiming-uniform, B zero, so the net computes
+    its base net) and return their number. `to_empty` leaves them uninitialized and `init_weights` does not know them.
+    """
+    from peft.tuners.lora import LoraLayer
+
+    num_adapters = 0
+    for module in net.modules():
+        if isinstance(module, LoraLayer):
+            for adapter_name in module.lora_A:
+                module.reset_lora_parameters(adapter_name, init_lora_weights=True)
+                num_adapters += 1
+    return num_adapters
+
+
 def build_net(
     net_config: LazyDict,
     device_mesh=None,
     mixed_precision_policy_root_module: Optional[torch.distributed.fsdp.MixedPrecisionPolicy] = None,
     mixed_precision_policy_internal_layers: Optional[torch.distributed.fsdp.MixedPrecisionPolicy] = None,
+    lora_config=None,
 ):
+    """Build a net on the meta device, shard it with FSDP if `device_mesh` is given, and materialize it on CUDA.
+
+    With `lora_config` (a peft `LoraConfig`), LoRA adapters are injected before sharding and are the only trainable
+    parameters (see `add_lora_adapters`).
+    """
     # NOTE: (ruiyuang) always use meta device, no need to use cpu
     if mixed_precision_policy_root_module is not None:
         root_fsdp_kwargs = {"mp_policy": mixed_precision_policy_root_module}
@@ -43,6 +78,8 @@ def build_net(
         with sync_timer("net instantiate"):
             with torch.device(init_device):
                 net: torch.nn.Module = lazy_instantiate(net_config)
+                if lora_config is not None:
+                    net = add_lora_adapters(net, lora_config)
 
         if device_mesh:
             net.fully_shard(mesh=device_mesh, **internal_fsdp_kwargs)
@@ -52,6 +89,8 @@ def build_net(
             net.to_empty(device="cuda")
             # IMPORTANT: (qsh) model init should not depends on current tensor shape, or it can handle Dtensor shape.
             net.init_weights()
+            if lora_config is not None:
+                log.info(f"Initialized {init_lora_adapters(net)} LoRA adapters (B = 0)")
 
         if device_mesh:
 
@@ -151,6 +190,17 @@ def load_consolidated_pt_to_net(
             state_dict = state_dict["state_dict"]
 
     _state_dict = get_model_state_dict(net)
+    # With LoRA adapters injected in place (`add_lora_adapters`), an adapted Linear's weight is `<m>.base_layer.weight`
+    # in the net and `<m>.weight` in a checkpoint without adapters.
+    base_layer_keys = {k.replace(".base_layer.", "."): k for k in _state_dict if ".base_layer." in k}
+    missing_base_keys = [
+        k for c, k in base_layer_keys.items() if net_prefix + c not in state_dict and net_prefix + k not in state_dict
+    ]
+    if missing_base_keys:
+        raise ValueError(
+            f"{checkpoint_path} has no weights for {len(missing_base_keys)} LoRA-adapted layers of the net, e.g. "
+            f"{missing_base_keys[:3]}"
+        )
 
     loaded_count = 0
     for key, v in state_dict.items():
@@ -158,6 +208,7 @@ def load_consolidated_pt_to_net(
             # `net_ema.*`, optimizer state, scheduler state, etc.
             continue
         tgt_key = key[len(net_prefix) :]
+        tgt_key = base_layer_keys.get(tgt_key, tgt_key)
         if tgt_key not in _state_dict:
             continue
         tgt = _state_dict[tgt_key]
@@ -197,12 +248,14 @@ def load_internal_dcp_checkpoint_to_net(
     assert checkpoint_path.endswith("/model"), f"checkpoint_path should end with /model, got {checkpoint_path}"
 
     storage_reader = get_storage_reader(checkpoint_path, credential_path)
+    checkpoint_keys = storage_reader.read_metadata().state_dict_metadata.keys()
     _state_dict = get_model_state_dict(net)
     _new_state_dict = collections.OrderedDict()
     # To manually check if the checkpoint is loaded correctly
     _key_to_check = None
     _value_to_check = None
     loaded_st_to_st_mapping = {}
+    missing_base_keys = []
     for k in _state_dict.keys():
         # try to remember a key and check afterwards
         if _value_to_check is None and "weight" in k and "lora" not in k:
@@ -213,8 +266,18 @@ def load_internal_dcp_checkpoint_to_net(
         if "_extra_state" in k:
             continue
         _name_to_load = f"{net_prefix}{k}"
+        if ".base_layer." in k and _name_to_load not in checkpoint_keys:
+            # LoRA adapters injected in place: a checkpoint without them stores `<m>.base_layer.weight` as `<m>.weight`
+            _name_to_load = f"{net_prefix}{k.replace('.base_layer.', '.')}"
+            if _name_to_load not in checkpoint_keys:
+                missing_base_keys.append(k)
         _new_state_dict[_name_to_load] = _state_dict[k]
         loaded_st_to_st_mapping[_name_to_load] = k
+    if missing_base_keys:
+        raise ValueError(
+            f"{checkpoint_path} has no weights for {len(missing_base_keys)} LoRA-adapted layers of the net, e.g. "
+            f"{missing_base_keys[:3]}"
+        )
 
     dcp.load(
         _new_state_dict,

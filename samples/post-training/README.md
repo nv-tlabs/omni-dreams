@@ -121,6 +121,13 @@ its `#SBATCH` directives.
 | 2  | Mid-training teacher (L1b)   | `causal_cosmos2/config.py` + teacher exp        |
 | 3  | Self-forcing distillation (L0) | `self_forcing/config.py` + release exp        |
 
+Experiment 3 can train LoRA adapters on its generator only: append
+`model.config.use_lora=True` (`torchrun_smoke.sh 3 model.config.use_lora=True`),
+with `lora_rank`, `lora_alpha` and `lora_target_modules` as for `use_lora` in
+Experiments 1 and 2. The real and fake scores are unchanged, and
+`model.config.ema.enabled` must stay `False`. The checkpoints keep the adapters
+next to the base weights; merge them before a net without adapters loads one.
+
 ```bash
 # Direct torchrun on a single rented compute node (Lepton, Lambda, any cloud box).
 bash samples/post-training/torchrun_smoke.sh 1
