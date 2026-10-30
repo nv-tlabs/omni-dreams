@@ -118,6 +118,26 @@ def load_self_forcing_public_ckpt_to_net(
 
 
 
+def _check_lora_tensors_loadable(checkpoint_keys, net_keys, net_prefix: str, checkpoint_path: str) -> None:
+    """Refuse LoRA tensors that the net has no parameters for.
+
+    A checkpoint trained with `use_lora` holds the adapter weights `<m>.lora_A.*` / `<m>.lora_B.*` (and, with
+    adapters injected in place, `<m>.base_layer.weight`). Loading it into a net without adapters would skip those
+    keys and leave the net with only the frozen base weights, without what the run trained.
+    """
+    unloadable = [
+        k
+        for k in checkpoint_keys
+        if k.startswith(net_prefix) and (".lora_" in k or ".base_layer." in k) and k[len(net_prefix) :] not in net_keys
+    ]
+    if unloadable:
+        raise ValueError(
+            f"{checkpoint_path} has {len(unloadable)} LoRA tensors that the net has no parameters for, e.g. "
+            f"{unloadable[:3]}. Merge the adapters into the base weights first: python scripts/convert_dcp_to_pt.py "
+            "--dcp <checkpoints/iter_N/model> --out <file.pt> --lora-alpha <lora_alpha of the training config>"
+        )
+
+
 def load_consolidated_pt_to_net(
     net,
     checkpoint_path: str,
@@ -127,11 +147,10 @@ def load_consolidated_pt_to_net(
     """Load a consolidated `.pt` checkpoint into a bare `nn.Module` (e.g. `self.net`,
     `self.net_real_score`, `self.net_fake_score`).
 
-    Supports the output format of `predict2/scripts/convert_distcp_to_pt.py`:
-    - `model.pt`: full DCP-converted state with mixed prefixes (`net.*`, `net_ema.*`, etc.).
+    Supports a consolidated state dict such as the output of `scripts/convert_dcp_to_pt.py`:
+    - full DCP-converted state with mixed prefixes (`net.*`, `net_ema.*`, etc.).
       Only `net_prefix`-prefixed keys are loaded; everything else is dropped.
-    - `model_ema_fp32.pt` / `model_ema_bf16.pt`: EMA-only state where keys have been
-      renamed `net_ema.* -> net.*` by the conversion script (line 116).
+    - EMA-only state whose keys have been renamed `net_ema.* -> net.*`.
 
     Also tolerates an outer `{"model": <state_dict>}` or `{"state_dict": <state_dict>}`
     wrapper for compatibility with hand-rolled `.pt` files.
@@ -173,6 +192,7 @@ def load_consolidated_pt_to_net(
         _state_dict[tgt_key] = v
         loaded_count += 1
 
+    _check_lora_tensors_loadable(state_dict.keys(), _state_dict.keys(), net_prefix, checkpoint_path)
     if loaded_count == 0:
         raise ValueError(
             f"No keys with prefix {net_prefix!r} found in {checkpoint_path}. "
@@ -198,6 +218,9 @@ def load_internal_dcp_checkpoint_to_net(
 
     storage_reader = get_storage_reader(checkpoint_path, credential_path)
     _state_dict = get_model_state_dict(net)
+    _check_lora_tensors_loadable(
+        storage_reader.read_metadata().state_dict_metadata.keys(), _state_dict.keys(), net_prefix, checkpoint_path
+    )
     _new_state_dict = collections.OrderedDict()
     # To manually check if the checkpoint is loaded correctly
     _key_to_check = None

@@ -215,6 +215,28 @@ post-training/data/
 Location of the dataset can be configured during training by setting `dataloader_train.data_root=${YOUR_DATA_PATH}`.
 Each `mp4` in `video/` and `hdmap/` should be temporally aligned and at least 93 frames long. Each `txt` in `caption/` should be a plain text file containing the caption of each video clip. 
 
+## Exporting a trained checkpoint
+
+Training saves the model as a DCP directory,
+`<job>/checkpoints/iter_<N>/model`. `post-training/scripts/convert_dcp_to_pt.py`
+converts it on CPU to a consolidated `.pt` file, the format that
+`checkpoint.load_path` and the self-forcing `net_ckpt` /
+`net_real_score_ckpt` / `net_fake_score_ckpt` take. For a run with
+`model.config.use_lora=True` it merges the LoRA adapters into their base
+weights; pass the run's `lora_alpha` (32 by default), which the checkpoint
+does not record:
+
+```bash
+cd post-training
+python scripts/convert_dcp_to_pt.py --lora-alpha 32 \
+  --dcp <job>/checkpoints/iter_000001000/model --out student.pt
+```
+
+The conversion writes a temporary full copy next to `--out`, so plan for
+about twice the checkpoint's size of free disk space there. The self-forcing
+loaders refuse a checkpoint whose LoRA adapters the net has no parameters for,
+instead of loading only its frozen base weights.
+
 ## Troubleshooting
 
 `setup_env.sh` exits with a clear message if the HF token / cache-dir

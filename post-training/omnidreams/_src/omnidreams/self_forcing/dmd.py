@@ -54,7 +54,7 @@ def _load_net_init_ckpt(net, ckpt_path: str, *, role: str, credential_path: str)
 
     After resolution:
       - ``.pt`` ending → consolidated state dict (e.g. output of
-        ``convert_distcp_to_pt.py``) → ``load_consolidated_pt_to_net``.
+        ``scripts/convert_dcp_to_pt.py``) → ``load_consolidated_pt_to_net``.
         For the legacy public self-forcing ``.pt`` format (top-level
         ``generator`` / ``generator_ema`` keys) call
         ``load_self_forcing_public_ckpt_to_net`` directly instead.
